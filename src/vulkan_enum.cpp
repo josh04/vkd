@@ -154,4 +154,31 @@ namespace vulkan {
         #undef FLAG
         return outs;
     }
+
+    std::string format_to_string(VkFormat format) {
+        std::string form = "";
+        switch (format) {
+            // depth formats
+            case VK_FORMAT_D32_SFLOAT_S8_UINT:
+                form = "VK_FORMAT_D32_SFLOAT_S8_UINT";
+                break;
+            case VK_FORMAT_D32_SFLOAT:
+                form = "VK_FORMAT_D32_SFLOAT";
+                break;
+            case VK_FORMAT_D24_UNORM_S8_UINT:
+                form = "VK_FORMAT_D24_UNORM_S8_UINT";
+                break;
+            case VK_FORMAT_D16_UNORM_S8_UINT:
+                form = "VK_FORMAT_D16_UNORM_S8_UINT";
+                break;
+            case VK_FORMAT_D16_UNORM:
+                form = "VK_FORMAT_D16_UNORM";
+                break;
+            // colour formats
+            case VK_FORMAT_B8G8R8A8_UNORM:
+                form = "VK_FORMAT_B8G8R8A8_UNORM";
+                break;
+        }
+        return form;
+    }
 }

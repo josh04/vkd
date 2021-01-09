@@ -1,0 +1,44 @@
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(std430, binding = 0) buffer Buf 
+{
+   uint image[];
+};
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+uint uint8_buffer(int coord_x) {
+    int xoff = coord_x % 4;
+    uint y = image[(coord_x - xoff) / 4];
+    uint ret = (y >> (8 * xoff)) & 0xFF;
+    return ret;
+}
+
+vec4 bt709yuvrgb(vec4 yuv) {
+    yuv.y = yuv.y - 0.5;
+    yuv.z = yuv.z - 0.5;
+    const float r = yuv.x*1 + yuv.y*0 +         yuv.z*1.570;
+    const float g = yuv.x*1 + yuv.y*-0.187 +    yuv.z*-0.467;
+    const float b = yuv.x*1 + yuv.y*1.856 +     yuv.z*0;
+    return vec4(r, g, b, 1.0f);
+}
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 dim = imageSize(outputTex);
+
+    uint y = uint8_buffer(dim.x * coord.y + coord.x);
+    uint u = uint8_buffer(dim.x * dim.y + dim.x/2 * int(floor(coord.y/2.0)) + int(floor(coord.x/2)));
+    uint v = uint8_buffer(dim.x * dim.y * 5 / 4 + dim.x/2 * int(floor(coord.y/2.0)) + int(floor(coord.x/2)));
+
+    vec4 yuv = vec4((y - 16.0) / 235.0, u / 255.0, v / 255.0, 1.0);
+    vec4 rgb = bt709yuvrgb(yuv);
+    imageStore(outputTex, coord, rgb);
+}

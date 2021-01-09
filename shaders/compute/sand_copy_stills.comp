@@ -1,0 +1,36 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32ui) uniform uimage2D inputTex;
+layout(binding = 1, rgba32ui) uniform uimage2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+
+    ivec2 dim = imageSize(inputTex);
+
+    uvec4 outp = imageLoad(inputTex, coord);
+
+    if (outp.x > 0) {
+        imageStore(outputTex, coord, outp);
+    }
+}
+/*
+__kernel void sand_copy_stills(read_only image2d_t input, write_only image2d_t output) {
+    const sampler_t sampler = CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE;
+    const int2 coord = (int2)(get_global_id(0), get_global_id(1));
+    
+    const uint4 out = read_imageui(input, sampler, coord);
+    if (out.x > 0) {
+        write_imageui(output, (int2)(coord.x, coord.y), out);
+    }
+}
+*/

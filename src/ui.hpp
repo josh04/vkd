@@ -1,21 +1,12 @@
 #pragma once
 
 #include <array>
-
-
+#include <string>
 #include "imgui/imgui.h"
-
-
-// This is the main rendering function that you have to implement and provide to ImGui (via setting up 'RenderDrawListsFn' in the ImGuiIO structure)
-// If text or lines are blurry when integrating ImGui in your engine:
-// - in your Render function, try translating your projection matrix by (0.5f,0.5f) or (0.375f,0.375f)
-void ImGui_ImplGlfwGL3_RenderDrawLists(ImDrawData* draw_data);
-void ImGui_ImplGlfwGL3_CreateFontsTexture();
-bool ImGui_ImplGlfwGL3_CreateDeviceObjects();
 
 class imguiDrawer {
 public:
-    imguiDrawer(unsigned int width, unsigned int height);
+    imguiDrawer(unsigned int width, unsigned int height, bool vulkan);
 
     ~imguiDrawer();
 
@@ -42,7 +33,6 @@ public:
     }
 
     void mouseMove(int x, int y) {
-
         m_x = x * (_width / (float)_s_width);
         m_y = y * (_height / (float)_s_height);
 
@@ -65,7 +55,9 @@ private:
     float scroll = 0;
     std::array<bool, 3> mouseButtons;
 
+    bool _first = true;
     ImFont* _font = nullptr;
 
     ImGuiContext* _imgui_context = nullptr;
+    bool _vulkan = false;
 };

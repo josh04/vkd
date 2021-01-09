@@ -1,0 +1,63 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32ui) uniform uimage2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    if ((coord.y+90) % 180 < 10) {
+        if (coord.y > 530) {
+            if (coord.x > 340 && coord.x < 940) {
+                imageStore(outputTex, coord, uvec4(1, 1, 0, 0));
+            }
+        } else if (coord.y > 350){
+            if ((coord.x < 400 || coord.x > 880) || (coord.x > 540 && coord.x < 740)) {
+                imageStore(outputTex, coord, uvec4(1, 1, 0, 0));
+            }
+        } else if (coord.y > 170) {
+            if ((coord.x < 300 || coord.x > 980) || (coord.x > 600 && coord.x < 680)) {
+                imageStore(outputTex, coord, uvec4(1, 1, 0, 0));
+            }
+        } else {
+            if ((coord.x < 200 || coord.x > 1080) || (coord.x > 620 && coord.x < 660)) {
+                imageStore(outputTex, coord, uvec4(1, 1, 0, 0));
+            }
+        }
+    }
+}
+
+/*
+
+__kernel void sand_add_bumpers(write_only image2d_t output) {
+    const sampler_t sampler = CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE;
+    const int2 coord = (int2)(get_global_id(0), get_global_id(1));
+    
+    if ((coord.y+90) % 180 < 10) {
+        if (coord.y > 530) {
+            if (coord.x > 340 && coord.x < 940) {
+                write_imageui(output, coord, (uint4)(1, 1, 0, 0));
+            }
+        } else if (coord.y > 350){
+            if ((coord.x < 400 || coord.x > 880) || (coord.x > 540 && coord.x < 740)) {
+                write_imageui(output, coord, (uint4)(1, 1, 0, 0));
+            }
+        } else if (coord.y > 170) {
+            if ((coord.x < 300 || coord.x > 980) || (coord.x > 600 && coord.x < 680)) {
+                write_imageui(output, coord, (uint4)(1, 1, 0, 0));
+            }
+        } else {
+            if ((coord.x < 200 || coord.x > 1080) || (coord.x > 620 && coord.x < 660)) {
+                write_imageui(output, coord, (uint4)(1, 1, 0, 0));
+            }
+        }
+    }
+}*/

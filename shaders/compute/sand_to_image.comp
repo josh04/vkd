@@ -1,0 +1,53 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32ui) uniform uimage2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    float bcol;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    uvec4 inp = imageLoad(inputTex, coord);
+
+    vec4 outp = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    
+    if (inp.x == 1) {
+        if (inp.y == 0) {
+            outp = vec4(float(inp.z)/100.0f, float(inp.z)/100.0f, push.bcol, 1.0f);
+        } else if (inp.y == 1) {
+            outp = vec4(0.8f, 0.8f, 0.8f, 1.0f);
+        }
+    }
+    
+    imageStore(outputTex, coord, outp);
+}
+
+/*
+__kernel void sand_to_image(read_only image2d_t input, write_only image2d_t output) {
+    const sampler_t sampler = CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE;
+    const int2 coord = (int2)(get_global_id(0), get_global_id(1));
+    
+    const uint4 in = read_imageui(input, sampler, coord);
+    
+    float4 out = (float4)(0.0f, 0.0f, 0.0f, 1.0f);
+    
+    if (in.x == 1) {
+        if (in.y == 0) {
+            out = (float4)(in.z/100.0f, in.z/100.0f, 0, 1.0f);
+        } else if (in.y == 1) {
+            out = (float4)(0.8f, 0.8f, 0.8f, 1.0f);
+        }
+    }
+    
+    write_imagef(output, coord, out);
+}
+*/

@@ -1,0 +1,57 @@
+
+
+#version 450
+
+// Binding 0 : Position storage buffer
+
+layout(std140, binding = 0) buffer Buf 
+{
+   uvec4 new_sand[ ];
+};
+
+layout(binding = 1, rgba32ui) uniform uimage2D scratchTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+#define UINT_MAX 4294967295
+
+void main() 
+{
+    int coord = int(gl_GlobalInvocationID.x) + push.vkd_offset.x;
+
+    uvec4 test = new_sand[coord.x / 4];
+    int p = coord.x % 4;
+
+    if (test[p] > 0) {
+        uint seed = 45636546 + coord.x;
+		uint t = seed ^ (seed << 11);
+		uint result = 34624654 ^ (34624654 >> 19) ^ (t ^ (t >> 8));
+        uint sub = UINT_MAX / 1000000;
+
+        uvec4 in_col = imageLoad(scratchTex, ivec2(coord, 0));
+        imageStore(scratchTex, ivec2(coord, 0), in_col+uvec4(test[p], 0, result/10000000, 0));
+    }
+}
+
+
+/*
+__kernel void sand_add(__global uchar * input, read_only image2d_t output_read, write_only image2d_t output) {
+    const sampler_t sampler = CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE;
+    const int2 coord = (int2)(get_global_id(0), get_global_id(1));
+    
+    const uchar in = input[coord.x];
+    if (in) {
+		// 'randoms' is uint2 passed to kernel
+		uint seed = 45636546 + coord.x;
+		uint t = seed ^ (seed << 11);
+		uint result = 34624654 ^ (34624654 >> 19) ^ (t ^ (t >> 8));
+
+        const uint4 in_col = read_imageui(output_read, sampler, coord);
+        write_imageui(output, coord, in_col+(uint4)(in, 0, result /(INT_MAX / 100), 0));
+    }
+}
+*/

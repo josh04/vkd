@@ -8,13 +8,13 @@
             "type": "shell",
             "command": "ninja",
             "options": {
-                "cwd": "${workspaceRoot}/cmake",
+                "cwd": "${workspaceRoot}/cmake"
             },
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": "$gcc",
+            "problemMatcher": "$gcc"
         }
     ]
 }

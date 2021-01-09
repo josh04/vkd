@@ -1,0 +1,70 @@
+#version 450
+
+layout(binding = 0, rgba32ui) uniform uimage2D inputTex;
+layout(binding = 1, rgba32ui) uniform uimage2D inputOutTex;
+layout(binding = 2, rgba32ui) uniform uimage2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+	int _wobble;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+
+    ivec2 dim = imageSize(inputTex);
+
+    uvec4 inp = imageLoad(inputTex, coord);
+
+    uvec4 below = uvec4(999,0,0,0);
+    
+    ivec2 below_coord = ivec2(coord.x + push._wobble, coord.y + 1);
+    if (inp.x > 0 && inp.y == 0) {
+        below = imageLoad(inputTex, below_coord);
+    }
+
+    if (below.x == 0) {
+        if (coord.x + push._wobble < dim.x && coord.x + push._wobble >= 0) {
+            imageStore(outputTex, below_coord, inp);
+        }
+        inp = uvec4(0,0,0,0);
+    }
+
+    imageStore(inputOutTex, coord, inp);
+}
+
+/*
+__kernel void sand_process(read_only image2d_t input, write_only image2d_t input_write, write_only image2d_t output, int wobble) {
+    const sampler_t sampler = CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE;
+    const int2 coord = (int2)(get_global_id(0), get_global_id(1));
+
+    const int2 dim = get_image_dim(input);
+    
+    const uint4 in = read_imageui(input, sampler, coord);
+    
+    uint4 out = (uint4)(0,0,0,0);
+    
+    if (in.x > 0 && in.y == 0.0) {
+        const uint4 below = read_imageui(input, sampler, (int2)(coord.x+wobble, coord.y+1));
+        if (below.x == 0) {
+            out = in;
+            write_imageui(input_write, coord, (uint4)(0,0,0,0));
+            
+            
+            if (coord.x+wobble < dim.x && coord.x+wobble >= 0) {
+                write_imageui(output, (int2)(coord.x+wobble, coord.y+1), out);
+            }
+        }
+        
+    }
+    
+    /*if (coord.y+1 == dim.y-1) {
+        out = out + read_imageui(input, sampler, (int2)(coord.x, coord.y+1));
+    }*
+    
+}
+
+*/

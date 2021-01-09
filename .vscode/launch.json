@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/cmake/src/demo",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/cmake",
             "environment": [{"name": "VK_ICD_FILENAMES", "value": "/home/pi/local-install/share/vulkan/icd.d/broadcom_icd.armv7l.json"}],
             "externalConsole": false,
             "MIMode": "gdb",
@@ -22,6 +22,38 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "demo (mac)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/src/demo",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "demo (mac 2)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/src/demo",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
         }
+        
     ]
 }

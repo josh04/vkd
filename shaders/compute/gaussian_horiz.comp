@@ -1,0 +1,43 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+#define M_PI           3.14159265358979323846  /* pi */
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    float sigma;
+    int half_window;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+
+    vec4 out_r = vec4(0.0, 0.0, 0.0, 0.0);
+
+    float div = 0.0;
+    
+    float mult_fac = 1.0/sqrt(M_PI * 2.0 * push.sigma * push.sigma);
+    float denom = 2.0 * push.sigma * push.sigma;
+    
+    for (int j = -push.half_window; j < push.half_window; ++j) {
+        vec4 in_r = (imageLoad(inputTex, ivec2(coord.x + j, coord.y)));
+        
+        float jf = float(j);
+        float gauss = mult_fac * exp(-(jf*jf / denom));
+        
+        div += gauss;
+        
+        out_r += gauss * in_r;
+    }
+    
+    out_r = (out_r / div);
+    
+    imageStore(outputTex, coord, out_r);
+}

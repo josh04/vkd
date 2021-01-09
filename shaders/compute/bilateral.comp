@@ -1,0 +1,215 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    float sigma_s;
+    float sigma_r;
+    int halfWindow;
+} push;
+
+void main() 
+{
+	float sigmaS = push.sigma_s * push.sigma_s;
+	float sigmaR = push.sigma_r * push.sigma_r;
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 q = p;
+    ivec2 size = imageSize(inputTex);
+
+	int fixed_array[121] = {
+		0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0,
+		0, 0, 1, 1, 2, 2, 2, 1, 1, 0, 0,
+		0, 1, 1, 2, 2, 2, 2, 2, 1, 1, 0,
+		0, 1, 2, 3, 3, 3, 3, 3, 2, 1, 0,
+		1, 2, 2, 3, 4, 4, 4, 3, 2, 2, 1,
+		1, 2, 2, 3, 4, 5, 4, 3, 2, 2, 1,
+		1, 2, 2, 3, 4, 4, 4, 3, 2, 2, 1,
+		0, 1, 2, 3, 3, 3, 3, 3, 2, 1, 0,
+		0, 1, 1, 2, 2, 2, 2, 2, 1, 1, 0,
+		0, 0, 1, 1, 2, 2, 2, 1, 1, 0, 0,
+		0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0
+	};
+	// koef[1] could pot. be 0.125f too
+	float koef[6] = { 0.0f, 0.0f, 0.125f, 0.125f, 0.5f, 1.0f };
+
+    vec4 ip = imageLoad(inputTex, p);
+    vec4 norm = vec4(1.0, 1.0, 1.0, 1.0);
+
+    vec4 sum = ip;
+
+    for (q.x = p.x - push.halfWindow; q.x <= p.x + push.halfWindow; ++q.x) {
+        if (q.x >= 0 && q.x <= size.x && q.x != p.x) {
+            vec4 iq = imageLoad(inputTex, q);
+
+            vec2 space = vec2(p.x - q.x, p.y - q.y);
+            float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+            vec4 range = ip - iq;
+            vec4 gr = exp(-sigmaR * (range*range));
+
+            vec4 factor = gs * gr;
+
+            sum += factor * iq;
+            norm += factor;
+        }
+    }
+
+    q = p;
+
+    for (q.y = p.y - push.halfWindow; q.y <= p.y + push.halfWindow; ++q.y) {
+        if (q.y >= 0 && q.y <= size.y && q.y != p.y) {
+            vec4 iq = imageLoad(inputTex, q);
+
+            vec2 space = vec2(p.x - q.x, p.y - q.y);
+            float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+            vec4 range = ip - iq;
+            vec4 gr = exp(-sigmaR * (range*range));
+
+            vec4 factor = gs * gr;
+
+            sum += factor * iq;
+            norm += factor;
+        }
+    }
+
+    for (q.x = p.x - push.halfWindow, q.y = p.y - push.halfWindow; q.x <= p.x + push.halfWindow; ++q.x, ++q.y) {
+        if (q.x >= 0 && q.y >= 0 && q.x <= size.x && q.y <= size.y && q.x != p.x) {
+            vec4 iq = imageLoad(inputTex, q);
+
+            vec2 space = vec2(p.x - q.x, p.y - q.y);
+            float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+            vec4 range = ip - iq;
+            vec4 gr = exp(-sigmaR * (range*range));
+
+            vec4 factor = gs * gr;
+
+            sum += factor * iq;
+            norm += factor;
+        }
+    }
+
+    for (q.x = p.x + push.halfWindow, q.y = p.y - push.halfWindow; q.x >= p.x - push.halfWindow; --q.x, ++q.y) {
+        if (q.x >= 0 && q.y >= 0 && q.x <= size.x && q.y <= size.y && q.x != p.x) {
+            vec4 iq = imageLoad(inputTex, q);
+
+            vec2 space = vec2(p.x - q.x, p.y - q.y);
+            float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+            vec4 range = ip - iq;
+            vec4 gr = exp(-sigmaR * (range*range));
+
+            vec4 factor = gs * gr;
+
+            sum += factor * iq;
+            norm += factor;
+        }
+    }
+
+    vec4 outp = sum / norm;
+
+    imageStore(outputTex, p, vec4(outp.x, outp.y, outp.z, 1.0f));
+}
+
+/*
+
+__kernel void multiBilinear(read_only image2d_t input, write_only image2d_t output, const float sigmaS, const float sigmaR, const int halfWindow) {
+	const sampler_t sampler = CLK_FILTER_NEAREST | CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE;
+
+	const int2 size = get_image_dim(input); // Image size
+
+	int2 q, p = (int2)(get_global_id(0), get_global_id(1));
+
+	if (p.x <= size.x && p.y <= size.y) {
+		float4 ip = read_imagef(input, sampler, p);
+
+		float4 sum = 0.0f, norm = 0.0f;
+
+		sum += ip;
+		norm += 1.0f;
+
+		q = p;
+
+		for (q.x = p.x - halfWindow; q.x <= p.x + halfWindow; ++q.x) {
+			if (q.x >= 0 && q.x <= size.x && q.x != p.x) {
+				float4 iq = read_imagef(input, sampler, q);
+
+				float2 space = (float2)(p.x - q.x, p.y - q.y);
+				float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+				float4 range = ip - iq;
+				float4 gr = exp(-sigmaR * (range*range));
+
+				float4 factor = gs * gr;
+
+				sum += factor * iq;
+				norm += factor;
+			}
+		}
+
+		q = p;
+
+		for (q.y = p.y - halfWindow; q.y <= p.y + halfWindow; ++q.y) {
+			if (q.y >= 0 && q.y <= size.y && q.y != p.y) {
+				float4 iq = read_imagef(input, sampler, q);
+
+				float2 space = (float2)(p.x - q.x, p.y - q.y);
+				float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+				float4 range = ip - iq;
+				float4 gr = exp(-sigmaR * (range*range));
+
+				float4 factor = gs * gr;
+
+				sum += factor * iq;
+				norm += factor;
+			}
+		}
+
+		for (q.x = p.x - halfWindow, q.y = p.y - halfWindow; q.x <= p.x + halfWindow; ++q.x, ++q.y) {
+			if (q.x >= 0 && q.y >= 0 && q.x <= size.x && q.y <= size.y && q.x != p.x) {
+				float4 iq = read_imagef(input, sampler, q);
+
+				float2 space = (float2)(p.x - q.x, p.y - q.y);
+				float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+				float4 range = ip - iq;
+				float4 gr = exp(-sigmaR * (range*range));
+
+				float4 factor = gs * gr;
+
+				sum += factor * iq;
+				norm += factor;
+			}
+		}
+
+		for (q.x = p.x + halfWindow, q.y = p.y - halfWindow; q.x >= p.x - halfWindow; --q.x, ++q.y) {
+			if (q.x >= 0 && q.y >= 0 && q.x <= size.x && q.y <= size.y && q.x != p.x) {
+				float4 iq = read_imagef(input, sampler, q);
+
+				float2 space = (float2)(p.x - q.x, p.y - q.y);
+				float gs = exp(-sigmaS * (space.x*space.x + space.y*space.y));
+
+				float4 range = ip - iq;
+				float4 gr = exp(-sigmaR * (range*range));
+
+				float4 factor = gs * gr;
+
+				sum += factor * iq;
+				norm += factor;
+			}
+		}
+
+		float4 out = sum / norm;
+		write_imagef(output, p, (float4)(out.x, out.y, out.z, 1.0f));
+	}
+}
+
+*/
