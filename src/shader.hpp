@@ -10,7 +10,7 @@
 #include "spirv_reflect.h"
 #include "glm/glm.hpp"
 
-namespace vulkan {
+namespace vkd {
 
     class Device;
     class DescriptorLayout;

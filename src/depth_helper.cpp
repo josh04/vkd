@@ -2,7 +2,7 @@
 #include "vulkan/vulkan.h"
 #include <vector>
 
-namespace vulkan {
+namespace vkd {
     bool get_depth_format(VkPhysicalDevice physicalDevice, VkFormat *depthFormat)
     {
         // Since all depth formats may be optional, we need to find a suitable depth format to use

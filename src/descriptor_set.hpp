@@ -6,7 +6,7 @@
 #include "vulkan.hpp"
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Device;
     class Buffer;
     class Image;

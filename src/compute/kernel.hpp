@@ -11,7 +11,7 @@
 
 #include <glm/glm.hpp>
 
-namespace vulkan {
+namespace vkd {
     class Device;
     class ComputePipeline;
     class Buffer;
@@ -23,7 +23,7 @@ namespace vulkan {
 
     class Kernel {
     public:
-        Kernel(std::shared_ptr<Device> device) : _device(device) {}
+        Kernel(std::shared_ptr<Device> device, const std::string& param_hash) : _device(device), _param_hash(param_hash) {}
         ~Kernel() = default;
         Kernel(Kernel&&) = delete;
         Kernel(const Kernel&) = delete;
@@ -103,6 +103,9 @@ namespace vulkan {
         std::shared_ptr<Device> _device = nullptr;
         std::shared_ptr<PipelineCache> _pipeline_cache = nullptr;
         std::unique_ptr<ComputeShader> _shader = nullptr;
+
+        std::string _param_hash = "";
+
         PartialPipeline _full_pipeline;
         PartialPipeline _overflow_x_pipeline;
         PartialPipeline _overflow_y_pipeline;

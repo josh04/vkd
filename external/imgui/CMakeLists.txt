@@ -4,6 +4,7 @@ set(IMGUI_SOURCE
     imgui.cpp
     imgui_draw.cpp
     imgui_demo.cpp
+    imgui_tables.cpp
     imnodes.cpp
     ImSequencer.cpp
     imgui_impl_vulkan.cpp

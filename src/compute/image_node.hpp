@@ -2,7 +2,7 @@
 
 #include <memory>
 
-namespace vulkan {
+namespace vkd {
     class Image;
     class ImageNode {
     public:

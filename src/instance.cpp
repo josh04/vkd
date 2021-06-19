@@ -3,7 +3,7 @@
 #include "vulkan.hpp"
 #include <algorithm>
 
-namespace vulkan {
+namespace vkd {
     void Instance::init(bool validation) {
         _validation = validation;
 
@@ -51,9 +51,9 @@ namespace vulkan {
             }
         }
 
-#ifdef __APPLE__
+//#ifdef __APPLE__
         _enabled_instance_extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-#endif
+//#endif
 
         // Enabled requested instance extensions
         if (_enabled_instance_extensions.size() > 0) 

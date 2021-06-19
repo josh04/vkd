@@ -7,7 +7,7 @@
 
 #include "engine_node.hpp"
 
-namespace vulkan {
+namespace vkd {
 
     class Device;
     class ParticlePipeline;
@@ -34,7 +34,7 @@ namespace vulkan {
         void init() override;
         bool update() override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override;
-        void execute(VkSemaphore wait_semaphore) override;
+        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
 
         struct PushConstBlock {
             glm::vec2 scale;
@@ -58,16 +58,16 @@ namespace vulkan {
         size_t _swapchain_count = 0;
         void create_font();
 
-        std::vector<std::shared_ptr<vulkan::Image>> _font_images;
+        std::vector<std::shared_ptr<vkd::Image>> _font_images;
         std::shared_ptr<ImGuiPipeline> _pipeline = nullptr;
 
 
         PushConstBlock _const_block;
 
         VkSampler _sampler;
-        std::shared_ptr<vulkan::DescriptorPool> _desc_pool = nullptr;
-        std::shared_ptr<vulkan::DescriptorLayout> _desc_set_layout = nullptr;
-        std::shared_ptr<vulkan::DescriptorSet> _desc_set = nullptr;
+        std::shared_ptr<vkd::DescriptorPool> _desc_pool = nullptr;
+        std::shared_ptr<vkd::DescriptorLayout> _desc_set_layout = nullptr;
+        std::shared_ptr<vkd::DescriptorSet> _desc_set = nullptr;
 
         std::shared_ptr<VertexBuffer> _vertex_buf = nullptr;
         std::shared_ptr<IndexBuffer> _index_buf = nullptr;

@@ -4,7 +4,7 @@
 #include "instance.hpp"
 #include "SDL2/SDL.h"
 
-namespace vulkan {
+namespace vkd {
     class Device;
     class Surface {
     public:

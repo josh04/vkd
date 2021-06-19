@@ -1,6 +1,6 @@
 #include "vulkan_enum.hpp"
 
-namespace vulkan {
+namespace vkd {
 
     std::string error_string(VkResult errorCode)
     {
@@ -50,10 +50,31 @@ namespace vulkan {
         }
     }
 
+#define PHYS_FEAT(NAME) outs += std::string(#NAME": ") + (feats.NAME ? "true" : "false") + "\n"; 
+
+    std::string physical_device_8bit_features_string(const VkPhysicalDevice8BitStorageFeaturesKHR& feats) {
+        std::string outs = "";
+        
+        PHYS_FEAT(storageBuffer8BitAccess);
+        PHYS_FEAT(uniformAndStorageBuffer8BitAccess);
+        PHYS_FEAT(storagePushConstant8);
+
+        return outs;
+    }
+
+    std::string physical_device_16bit_features_string(const VkPhysicalDevice16BitStorageFeatures& feats) {
+        std::string outs = "";
+        
+        PHYS_FEAT(storageBuffer16BitAccess);
+        PHYS_FEAT(uniformAndStorageBuffer16BitAccess);
+        PHYS_FEAT(storagePushConstant16);
+        PHYS_FEAT(storageInputOutput16);
+
+        return outs;
+    }
 
     std::string physical_device_features_string(const VkPhysicalDeviceFeatures& feats) {
         std::string outs = "";
-#define PHYS_FEAT(NAME) outs += std::string(#NAME": ") + (feats.NAME ? "true" : "false") + "\n"; 
         
         PHYS_FEAT(robustBufferAccess);
         PHYS_FEAT(fullDrawIndexUint32);

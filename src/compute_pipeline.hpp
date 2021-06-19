@@ -3,7 +3,7 @@
 
 #include "pipeline.hpp"
 
-namespace vulkan {
+namespace vkd {
     class ComputeShader;
     class ComputePipeline : public Pipeline {
     public:

@@ -1,5 +1,5 @@
 #include "exr.hpp"
 
-namespace vulkan {
+namespace vkd {
     
 }

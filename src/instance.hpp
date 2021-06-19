@@ -3,7 +3,7 @@
 #include <string>
 #include "vulkan/vulkan.h"
 
-namespace vulkan {
+namespace vkd {
     class Instance {
     public:
         Instance() = default;

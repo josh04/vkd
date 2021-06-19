@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
 
 #include "imgui/imgui.h"
 #include "imgui/imfilebrowser.h"
@@ -16,21 +17,34 @@
 #include <cereal/archives/binary.hpp>
 
 #include "engine_node.hpp"
+#include "graph/graph.hpp"
 
-namespace vulkan {
+#include "performance.hpp"
+
+#include "render/draw_fullscreen.hpp"
+#include "bin.hpp"
+
+namespace vkd {
     class EngineNode;
     class ParameterInterface;
+    class GraphBuilder;
+    class FakeNode;
+    class Graph;
+    class DrawFullscreen;
+    class Timeline;
+    class SequencerLine;
 }
 
-namespace app_ui {
+namespace vkd {
     class NodeWindow {
     public:
         NodeWindow();
-        ~NodeWindow() = default;
+        ~NodeWindow();
         NodeWindow(NodeWindow&&) = delete;
         NodeWindow(const NodeWindow&) = delete;
 
-        void draw();
+        void add_input(const Bin::Entry& entry);
+        void draw(bool& updated);
 
         struct Node {
             std::string name;
@@ -39,14 +53,16 @@ namespace app_ui {
             std::set<int32_t> outputs;
             std::vector<int32_t> links;
 
-            std::shared_ptr<vulkan::EngineNode> node;
+            std::shared_ptr<vkd::FakeNode> node;
 
             bool close = false;
             
             template <class Archive>
-            void serialize( Archive & ar ) {
-                ar(name, display_name, inputs, outputs, 
-                    links, close);
+            void serialize(Archive& ar, const uint32_t version) {
+                if (version == 0) {
+                    ar(name, display_name, inputs, outputs, 
+                        links, close);
+                }
             }
         };
 
@@ -55,23 +71,28 @@ namespace app_ui {
             int32_t end;
 
             template <class Archive>
-            void serialize( Archive & ar ) {
-                ar(start, end);
+            void serialize(Archive& ar, const uint32_t version) {
+                if (version == 0) {
+                    ar(start, end);
+                }
             }
         };
 
-        const auto& graph() { return _built_nodes; }
+        template <class Archive>
+        void load(Archive& ar, const uint32_t version);
+        template <class Archive>
+        void save(Archive& ar, const uint32_t version) const;
 
-        void load(std::string path);
-        void save(std::string path);
+        void build_nodes(GraphBuilder& graph_builder);
+
+        const auto& sequencer_line() const { return _sequencer_line; }
     private:
 
-        template <class N> void add_node_(Node& node);
+        //template <class N> void add_node_(Node& node);
         int32_t _add_node(std::string name);
         int32_t _add_link(int32_t start, int32_t end);
-        void _execute();
 
-        void _ui_for_param(const std::shared_ptr<vulkan::ParameterInterface>& param);
+        void _ui_for_param(const std::shared_ptr<vkd::ParameterInterface>& param);
 
         std::set<int32_t> _pins(int32_t count);
         int32_t next_pin_();
@@ -96,11 +117,9 @@ namespace app_ui {
         // end saved elements
 
         ImGui::FileBrowser _file_dialog;
-        ImGui::FileBrowser _load_dialog;
-        ImGui::FileBrowser _save_dialog;
-        std::weak_ptr<vulkan::ParameterInterface> _file_dialog_param;
-        std::vector<std::shared_ptr<vulkan::EngineNode>> _built_nodes;
+        std::weak_ptr<vkd::ParameterInterface> _file_dialog_param;
 
+        std::shared_ptr<SequencerLine> _sequencer_line = nullptr;
     };
 
     struct SerialiseGraph {
@@ -122,15 +141,17 @@ namespace app_ui {
 
         std::set<int32_t> _open_node_windows;
 
-        std::map<std::string, vulkan::EngineNode::ShaderParamMap> save_map;
+        std::map<std::string, vkd::ShaderParamMap> save_map;
 
         template <class Archive>
-        void serialize( Archive & ar )
+        void serialize(Archive & ar, const uint32_t version)
         {
-            ar(_next_node, _next_pin, _next_link, _nodes, 
-                _pin_to_node, _links, _display_node, _remove_link_mode, 
-                _next_node_loc, _last_added_node_output, _open_node_windows,
-                save_map);
+            if (version == 0) {
+                ar(_next_node, _next_pin, _next_link, _nodes, 
+                    _pin_to_node, _links, _display_node, _remove_link_mode, 
+                    _next_node_loc, _last_added_node_output, _open_node_windows,
+                    save_map);
+            }
         }
     };
 }

@@ -3,7 +3,7 @@
 #include <memory>
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Exr {
     public:
         Exr() = default;

@@ -6,7 +6,7 @@
 #include "glm/glm.hpp"
 
 
-namespace vulkan {
+namespace vkd {
     class Bilateral : public EngineNode, public ImageNode {
     public:
         Bilateral() = default;
@@ -35,7 +35,7 @@ namespace vulkan {
         void init() override;
         bool update() override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(VkSemaphore wait_semaphore) override;
+        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
 
         VkSemaphore wait_prerender() const override { return _compute_complete; }
         auto compute_complete() const { return _compute_complete; }

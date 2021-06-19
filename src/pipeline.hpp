@@ -6,7 +6,7 @@
 #include <fstream>
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
 	class Device; 
 	class Renderpass; 
 	class Shader;

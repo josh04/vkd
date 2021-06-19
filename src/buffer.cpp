@@ -4,7 +4,7 @@
 #include "memory.hpp"
 #include "command_buffer.hpp"
 
-namespace vulkan {
+namespace vkd {
     Buffer::~Buffer() {
         if (_buffer) { vkDestroyBuffer(_device->logical_device(), _buffer, nullptr); }
         if (_memory) { vkFreeMemory(_device->logical_device(), _memory, nullptr); }
@@ -35,7 +35,7 @@ namespace vulkan {
             dst_stage_mask,
             0,
             0, nullptr,
-            0, &buffer_memory_barrier,
+            1, &buffer_memory_barrier,
             0, nullptr);
     }
 
@@ -92,8 +92,8 @@ namespace vulkan {
 
     }
 
-    void StagingBuffer::create(size_t size) {
-        _create(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    void StagingBuffer::create(size_t size, VkBufferUsageFlags extra_flags) {
+        _create(size, extra_flags | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     }
 
     void * StagingBuffer::map() {
@@ -120,4 +120,8 @@ namespace vulkan {
         _create(sz, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     }
 
+    void StorageBuffer::create(size_t sz, VkBufferUsageFlags extra_flags) {
+        memset(&_descriptor, 0, sizeof(VkDescriptorBufferInfo));
+        _create(sz, extra_flags | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    }
 }

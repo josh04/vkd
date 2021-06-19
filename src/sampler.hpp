@@ -1,7 +1,7 @@
 #pragma once
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     static VkSampler create_sampler(VkDevice device) {
 		// Font texture Sampler
 		VkSamplerCreateInfo sampler_create_info = {};

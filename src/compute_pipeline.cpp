@@ -3,7 +3,7 @@
 #include "shader.hpp"
 #include "vertex_input.hpp"
 
-namespace vulkan {
+namespace vkd {
     void ComputePipeline::create(VkDescriptorSetLayout desc_set_layout, ComputeShader * shader_stage, std::array<int32_t, 3> local_sizes) {
         std::vector<VkSpecializationMapEntry> specialisations;
         specialisations.resize(3);

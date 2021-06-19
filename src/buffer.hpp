@@ -3,7 +3,7 @@
 #include <vector>
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Device;
     class Buffer {
     public:
@@ -42,7 +42,7 @@ namespace vulkan {
         StagingBuffer(std::shared_ptr<Device> device) : Buffer(device) {}
         ~StagingBuffer() = default;
 
-        void create(size_t size);
+        void create(size_t size, VkBufferUsageFlags extra_flags = 0);
 
         void * map();
         void unmap();
@@ -73,6 +73,15 @@ namespace vulkan {
         ~UniformBuffer() = default;
 
         void create(size_t size);
+    private:
+
+    };
+    class StorageBuffer : public StagingBuffer {
+    public:
+        StorageBuffer(std::shared_ptr<Device> device) : StagingBuffer(device) {}
+        ~StorageBuffer() = default;
+
+        void create(size_t size, VkBufferUsageFlags extra_flags = 0);
     private:
 
     };

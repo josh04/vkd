@@ -2,7 +2,7 @@
 #include <memory>
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Image;
     class Device;
     class Renderpass;

@@ -4,7 +4,7 @@
 #include "image.hpp"
 #include "descriptor_sets.hpp"
 
-namespace vulkan {
+namespace vkd {
     DescriptorSet::~DescriptorSet() {
 	    VK_CHECK_RESULT(vkFreeDescriptorSets(_device->logical_device(), _pool->get(), 1, &_desc_set));
 	}

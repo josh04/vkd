@@ -3,7 +3,7 @@
 #include "vulkan/vulkan.h"
 #include "glm/glm.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Buffer;
     class Image {
     public:

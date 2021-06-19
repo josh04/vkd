@@ -7,7 +7,7 @@
 #include <X11/Xlib-xcb.h>
 #endif
 
-namespace vulkan {
+namespace vkd {
     Surface::Surface(std::shared_ptr<Instance> instance) : _instance(instance) {
         ext_vkGetPhysicalDeviceSurfaceSupportKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>(vkGetInstanceProcAddr(instance->instance(), "vkGetPhysicalDeviceSurfaceSupportKHR"));
         ext_vkGetPhysicalDeviceSurfaceCapabilitiesKHR =  reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(vkGetInstanceProcAddr(instance->instance(), "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"));

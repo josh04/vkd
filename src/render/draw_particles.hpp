@@ -5,7 +5,7 @@
 
 #include "engine_node.hpp"
 
-namespace vulkan {
+namespace vkd {
     
     class Device;
     class ParticlePipeline;
@@ -36,7 +36,7 @@ namespace vulkan {
         void init() override;
         bool update() override { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override;
-        void execute(VkSemaphore wait_semaphore) override;
+        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
 
     private:
         std::shared_ptr<DescriptorPool> _desc_pool = nullptr;

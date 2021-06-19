@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include "vulkan/vulkan.h"
 
-namespace vulkan {
+namespace vkd {
 
 	static uint32_t find_memory_index(const VkPhysicalDeviceMemoryProperties& props, uint32_t compatible_mask, VkMemoryPropertyFlags desired_properties) {
 		for (uint32_t i = 0; i < props.memoryTypeCount; i++) {

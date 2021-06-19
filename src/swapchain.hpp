@@ -3,7 +3,7 @@
 #include "vulkan.hpp"
 #include "surface.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Instance;
     class Device;
     class Image;

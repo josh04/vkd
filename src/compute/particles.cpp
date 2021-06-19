@@ -6,7 +6,7 @@
 #include "shader.hpp"
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     REGISTER_NODE("particles", "particles", Particles);
     void Particles::init() {
         _desc_pool = std::make_shared<DescriptorPool>(_device);
@@ -67,7 +67,7 @@ namespace vulkan {
     }
 
 
-    void Particles::execute(VkSemaphore wait_semaphore) {
+    void Particles::execute(VkSemaphore wait_semaphore, VkFence fence) {
 		// Wait for rendering finished
 		VkPipelineStageFlags wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 

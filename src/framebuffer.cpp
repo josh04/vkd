@@ -3,7 +3,7 @@
 #include "image.hpp"
 #include "renderpass.hpp"
 
-namespace vulkan {
+namespace vkd {
 
     void Framebuffer::create(Image& colour, Image& depth, uint32_t width, uint32_t height) {
         std::array<VkImageView, 2> attachments;

@@ -3,7 +3,7 @@
 #include "device.hpp"
 #include "descriptor_sets.hpp"
 
-namespace vulkan {
+namespace vkd {
     Shader::~Shader() {
         for (auto&& stage : _stages) {
 		    vkDestroyShaderModule(_device->logical_device(), stage.module, nullptr);

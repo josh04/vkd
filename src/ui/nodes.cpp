@@ -17,19 +17,34 @@
 #include "compute/particles.hpp"
 #include "compute/sand.hpp"
 
+#include "graph/graph.hpp"
+#include "graph/fake_node.hpp"
+
+#include "timeline.hpp"
+
 #include <set>
 #include <vector>
 #include <algorithm>
 #include <deque>
 
+#include "cereal/cereal.hpp"
+
+CEREAL_CLASS_VERSION(ImVec2, 0);
+CEREAL_CLASS_VERSION(vkd::NodeWindow, 0);
+CEREAL_CLASS_VERSION(vkd::NodeWindow::Node, 0);
+CEREAL_CLASS_VERSION(vkd::NodeWindow::Link, 0);
+CEREAL_CLASS_VERSION(vkd::SerialiseGraph, 0);
+
 template<class Archive>
-void serialize(Archive & archive, ImVec2& vec) {
-    archive( vec.x, vec.y );
+void serialize(Archive & archive, ImVec2& vec, const uint32_t version) {
+    if (version == 0) {
+        archive( vec.x, vec.y );
+    }
 }
 
-namespace app_ui {
+namespace vkd {
 
-    NodeWindow::NodeWindow() : _save_dialog(ImGuiFileBrowserFlags_EnterNewFilename) {
+    NodeWindow::NodeWindow() {
         imnodes::IO& io = imnodes::GetIO();
         io.link_detach_with_modifier_click.modifier = &_remove_link_mode;
 
@@ -37,13 +52,31 @@ namespace app_ui {
 
         _file_dialog.SetTitle("ffmpeg picker");
         _file_dialog.SetTypeFilters({ ".mp4" });
-        _save_dialog.SetTitle("save graph");
-        _save_dialog.SetTypeFilters({ ".bin" });
-        _load_dialog.SetTitle("load graph");
-        _load_dialog.SetTypeFilters({ ".bin" });
+
+        _sequencer_line = std::make_shared<SequencerLine>();
+
+        //_local_timeline->frame_count = _frame_count;
+
+        _sequencer_line->name = "empty";
+    }
+
+    NodeWindow::~NodeWindow() {
     }
     
-    void NodeWindow::draw() {
+    void NodeWindow::add_input(const Bin::Entry& entry) {
+        auto node = _add_node("ffmpeg");
+        auto search = _nodes.find(node);
+        auto new_link_s = *search->second.outputs.begin();
+
+        auto disp = _nodes.find(_display_node);
+
+        if (disp != _nodes.end()) {
+            auto new_link_e = *disp->second.inputs.rbegin();
+            _add_link(new_link_s, new_link_e);
+        }
+    }
+
+    void NodeWindow::draw(bool& updated) {
         ImGuiIO& io = ImGui::GetIO();
         
         ImGui::SetNextWindowPos(ImVec2(600, 25), ImGuiCond_Once);
@@ -51,10 +84,14 @@ namespace app_ui {
 
         ImGui::Begin("node editor");
 
-        auto&& nodemap = vulkan::EngineNode::node_type_map();
+        auto&& nodemap = vkd::EngineNode::node_type_map();
+
+        std::set<std::string> blacklist = {"draw"};
 
         for (auto&& node : nodemap) {
-
+            if (blacklist.find(node.second.name) != blacklist.end()) {
+                continue;
+            }
             ImGui::SameLine();
             if (ImGui::Button(node.second.display_name.c_str())) {
                 _add_node(node.second.name.c_str());
@@ -111,6 +148,15 @@ namespace app_ui {
         int new_link_s, new_link_e;
         if (imnodes::IsLinkCreated(&new_link_s, &new_link_e)) {
             _add_link(new_link_s, new_link_e);
+
+            auto search = _nodes.find(_display_node);
+
+            if (search != _nodes.end()) {
+                if (search->second.inputs.find(new_link_e) != search->second.inputs.end()) {
+                    //_execute();
+                    updated = true;
+                }
+            }
         }
 
         int32_t node_id = -1;
@@ -135,19 +181,7 @@ namespace app_ui {
         }
 
         ImGui::EndChild();
-
-        if (ImGui::Button("execute")) {
-            _execute();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("load")) {
-            _load_dialog.Open();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("save")) {
-            _save_dialog.Open();
-        }
-
+        
         ImGui::End();
 
         int32_t hovered_node = -1;
@@ -210,23 +244,6 @@ namespace app_ui {
                 _file_dialog.ClearSelected();
             }
         }
-
-        _load_dialog.Display();
-        _save_dialog.Display();
-        
-        if(_load_dialog.HasSelected()) {
-            auto file = _load_dialog.GetSelected().string();
-            load(file);
-            _load_dialog.ClearSelected();
-        }
-
-        if(_save_dialog.HasSelected()) {
-            auto file = _save_dialog.GetSelected().string();
-            save(file);
-            _save_dialog.ClearSelected();
-        }
-
-
     }
 
     int32_t NodeWindow::_add_link(int32_t start, int32_t end) {
@@ -242,10 +259,13 @@ namespace app_ui {
         if (node_e != _pin_to_node.end()) {
             auto node = _nodes.find(node_e->second);
             if (node != _nodes.end()) {
+                node->second.links.push_back(_next_link);
                 if (node->first == _display_node) {
-                    int32_t np = next_pin_();
-                    node->second.inputs.insert(np);
-                    _pin_to_node[np] = _display_node;
+                    if (node->second.links.size() == node->second.inputs.size()) {
+                        int32_t np = next_pin_();
+                        node->second.inputs.insert(np);
+                        _pin_to_node[np] = _display_node;
+                    }
                 }
                 node->second.links.push_back(_next_link);
             }
@@ -254,47 +274,47 @@ namespace app_ui {
         _next_link++;
         return ret;
     }
-
+/*
     template <class N>
     void NodeWindow::add_node_(Node& node) {
         node.inputs = _pins(N::input_count());
         node.outputs = _pins(N::output_count());
-        node.node = vulkan::make(node.name);
+        node.node = vkd::make(node.name);
     }
-
-    int32_t NodeWindow::_add_node(std::string name) {
+*/
+    int32_t NodeWindow::_add_node(std::string node_type) {
         Node node{};
-        node.name = name;
+        node.name = node_type;
 
 
-        auto&& nodemap = vulkan::EngineNode::node_type_map();
-        auto search = nodemap.find(name);
+        auto&& nodemap = vkd::EngineNode::node_type_map();
+        auto search = nodemap.find(node_type);
         if (search != nodemap.end()) {
             node.name = search->second.name;
             node.display_name = search->second.display_name;
             node.inputs = _pins(search->second.inputs);
             node.outputs = _pins(search->second.outputs);
-            node.node = vulkan::make(node.name);
-        } else if (name == "display") {
+            node.node = std::make_shared<vkd::FakeNode>(_next_node, node.display_name, node_type); //vkd::make(node.name);
+        } else if (node_type == "display") {
             // NOP
             node.inputs = _pins(1);
-        } else if (name == "read") {
+        }/* else if (name == "read") {
             
         } else if (name == "write") {
             
         } else if (name == "particles") {
-            add_node_<vulkan::Particles>(node);
+            add_node_<vkd::Particles>(node);
         } else if (name == "draw_particles") {
-            add_node_<vulkan::DrawParticles>(node);
+            add_node_<vkd::DrawParticles>(node);
         } else if (name == "triangles") {
-            add_node_<vulkan::DrawTriangle>(node);
+            add_node_<vkd::DrawTriangle>(node);
         } else if (name == "history") {
 
         } else if (name == "sand") {
-            add_node_<vulkan::Sand>(node);
+            add_node_<vkd::Sand>(node);
         } else if (name == "draw") {
-            add_node_<vulkan::DrawFullscreen>(node);
-        }
+            add_node_<vkd::DrawFullscreen>(node);
+        }*/
 
         _nodes.emplace(_next_node, node);
         if (_nodes.size() == 1) {
@@ -337,21 +357,12 @@ namespace app_ui {
         return pin;
     }
 
-    void NodeWindow::_execute() {
-        _built_nodes.clear();
+    void NodeWindow::build_nodes(GraphBuilder& graph_builder) {
         std::deque<int32_t> node_queue;
-
-        /*for (auto&& node : _nodes) {
-            if (node.second.outputs.size() == 0) {
-                node_queue.push_back(node.first);
-            }
-        }*/
-
-
         node_queue.push_back(_display_node);
 
-        std::map<int32_t, std::shared_ptr<vulkan::EngineNode>> node_map;
-        std::vector<std::shared_ptr<vulkan::EngineNode>> rnodes;
+        std::map<int32_t, std::shared_ptr<vkd::FakeNode>> node_map;
+        std::vector<std::shared_ptr<vkd::FakeNode>> rnodes;
         std::map<int32_t, std::vector<int32_t>> input_map;
 
         while (node_queue.size() > 0) {
@@ -389,37 +400,38 @@ namespace app_ui {
 
         for (auto&& node : node_map) {
             auto&& inps = input_map[node.first];
-            std::vector<std::shared_ptr<vulkan::EngineNode>> inputs;
+            std::vector<std::shared_ptr<vkd::FakeNode>> inputs;
+
+            node.second->flush();
+
             for (auto&& inp : inps) {
                 auto ptr = node_map.at(inp);
                 inputs.push_back(ptr);
+                node.second->add_input(ptr);
             }
-            node.second->inputs(inputs);
-           // node.second->init();
+
+            graph_builder.add(node.second);
         }
 
-        _built_nodes = {rnodes.rbegin(), rnodes.rend()};
+        //_graph = graph_builder->bake(_timeline->current_frame());
 
-        std::cout << ">>>>>>>>>>>>>>>>>> " << std::endl;
-        for (auto&& node : rnodes) {
-            node->init();
-            std::cout << "inited " << node << std::endl;
-        }
+        //_execute_graph = true;
+
     }
 
-    void NodeWindow::_ui_for_param(const std::shared_ptr<vulkan::ParameterInterface>& paramPtr) {
+    void NodeWindow::_ui_for_param(const std::shared_ptr<vkd::ParameterInterface>& paramPtr) {
         ImGui::PushID(paramPtr.get());
         auto&& param = *paramPtr;
         auto&& name = param.name();
         auto type = param.type();
-        using vulkan::ParameterType;
+        using vkd::ParameterType;
         switch (type) {
         case ParameterType::p_float:
         {
             float p = param.as<float>().get();
             float min = param.as<float>().min();
             float max = param.as<float>().max();
-// SliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", float power = 1.0f);     // adjust format to decorate the value with a prefix or a suffix for in-slider labels or unit display. Use power!=1.0 for power curve sliders
+
             if (ImGui::SliderFloat(name.c_str(), &p, min, max)) {
                 param.as<float>().set(p);
             }
@@ -521,21 +533,24 @@ namespace app_ui {
             }
             break;
         }
+        case ParameterType::p_frame:
+        {
+            vkd::Frame p = param.as<vkd::Frame>().get();
+            ImGui::Text("%s: %llu", name.c_str(), p.index);
+            break;
+        }
         }
         ImGui::PopID();
     }
 
-    void NodeWindow::load(std::string path) {
+    template <class Archive>
+    void NodeWindow::load(Archive& archive, const uint32_t version) {
 
-        std::map<std::string, vulkan::EngineNode::ShaderParamMap> save_map;
-        for (auto&& node : _nodes) {
-            if (node.second.node) {
-                save_map.emplace(node.second.name, node.second.node->params());
-            }
+        if (version != 0) {
+            throw std::runtime_error("NodeWindow bad version");
         }
 
-        std::ifstream os(path, std::ios::binary);
-        cereal::BinaryInputArchive archive(os);
+        std::map<std::string, vkd::ShaderParamMap> save_map;
 
         SerialiseGraph data;
         archive(data);
@@ -555,20 +570,26 @@ namespace app_ui {
         _open_node_windows = data._open_node_windows;
         //save_map = save_map;
 
-
+        for (auto&& node : _nodes) {
+            node.second.node = std::make_shared<vkd::FakeNode>(node.first, node.second.display_name, node.second.name);
+            node.second.node->init();
+        }
+        //_execute();
     }
 
-    void NodeWindow::save(std::string path) {
+    template <class Archive>
+    void NodeWindow::save(Archive & archive, const uint32_t version) const {
+
+        if (version != 0) {
+            throw std::runtime_error("NodeWindow bad version");
+        }
         
-        std::map<std::string, vulkan::EngineNode::ShaderParamMap> save_map;
+        std::map<std::string, vkd::ShaderParamMap> save_map;
         for (auto&& node : _nodes) {
             if (node.second.node) {
                 save_map.emplace(node.second.name, node.second.node->params());
             }
         }
-
-        std::ofstream os(path, std::ios::binary);
-        cereal::BinaryOutputArchive archive( os );
 
         SerialiseGraph data;
 
@@ -589,4 +610,6 @@ namespace app_ui {
 
         archive(data);
     }
+    template void NodeWindow::load(cereal::BinaryInputArchive& archive, const uint32_t version);
+    template void NodeWindow::save(cereal::BinaryOutputArchive& archive, const uint32_t version) const;
 }

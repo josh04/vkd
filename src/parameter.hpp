@@ -5,37 +5,53 @@
 #include "cereal/types/vector.hpp"
 #include "cereal/types/set.hpp"
 #include "cereal/types/polymorphic.hpp"
+#include "cereal/types/atomic.hpp"
 #include "cereal/archives/binary.hpp"
-    
+
+#include <mutex>
+
 #include "glm/glm.hpp"
+
 namespace glm {
-template<class Archive>
-void serialize(Archive & archive, glm::vec2& vec) {
-    archive( vec.x, vec.y );
-}
-template<class Archive>
-void serialize(Archive & archive, glm::vec4& vec) {
-    archive( vec.x, vec.y, vec.z, vec.w );
-}
-template<class Archive>
-void serialize(Archive & archive, glm::ivec2& vec) {
-    archive( vec.x, vec.y );
-}
-template<class Archive>
-void serialize(Archive & archive, glm::ivec4& vec) {
-    archive( vec.x, vec.y, vec.z, vec.w );
-}
-template<class Archive>
-void serialize(Archive & archive, glm::uvec2& vec) {
-    archive( vec.x, vec.y );
-}
-template<class Archive>
-void serialize(Archive & archive, glm::uvec4& vec) {
-    archive( vec.x, vec.y, vec.z, vec.w );
-}
+    template<class Archive>
+    void serialize(Archive & archive, glm::vec2& vec, const uint32_t version) {
+        if (version == 0) {
+            archive( vec.x, vec.y );
+        }
+    }
+    template<class Archive>
+    void serialize(Archive & archive, glm::vec4& vec, const uint32_t version) {
+        if (version == 0) {
+        archive( vec.x, vec.y, vec.z, vec.w );
+        }
+    }
+    template<class Archive>
+    void serialize(Archive & archive, glm::ivec2& vec, const uint32_t version) {
+        if (version == 0) {
+        archive( vec.x, vec.y );
+        }
+    }
+    template<class Archive>
+    void serialize(Archive & archive, glm::ivec4& vec, const uint32_t version) {
+        if (version == 0) {
+        archive( vec.x, vec.y, vec.z, vec.w );
+        }
+    }
+    template<class Archive>
+    void serialize(Archive & archive, glm::uvec2& vec, const uint32_t version) {
+        if (version == 0) {
+            archive( vec.x, vec.y );
+        }
+    }
+    template<class Archive>
+    void serialize(Archive & archive, glm::uvec4& vec, const uint32_t version) {
+        if (version == 0) {
+            archive( vec.x, vec.y, vec.z, vec.w );
+        }
+    }
 }
 
-namespace vulkan {
+namespace vkd {
     enum class ParameterType {
         p_float,
         p_int,
@@ -46,9 +62,21 @@ namespace vulkan {
         p_ivec4,
         p_uvec2,
         p_uvec4,
-        p_string
+        p_string,
+        p_frame
+    };
+
+    struct Frame {
+        int64_t index;
     };
     
+    template<class Archive>
+    void serialize(Archive & archive, vkd::Frame& vec, const uint32_t version) {
+        if (version == 0) {
+            archive( vec.index );
+        }
+    }
+
     template<typename P>
     class Parameter;
 
@@ -65,15 +93,20 @@ namespace vulkan {
         virtual size_t offset() = 0;
         virtual std::string name() const = 0;
 
+        virtual void set_from(const std::shared_ptr<ParameterInterface>& rhs) = 0;
+
+        void set_changed() { _changed = true; }
         bool changed() { auto ch = _changed; _changed = false; return ch; }
 
         virtual const std::set<std::string>& tags() const = 0;
         virtual void tag(const std::string& t) = 0;
 
         template <class Archive>
-        void serialize( Archive & ar )
+        void serialize(Archive& ar, const uint32_t version)
         {
-            ar(_changed);
+            if (version == 0) {
+                ar(_changed);
+            }
         }
     protected:
         bool _changed = true;
@@ -129,9 +162,12 @@ namespace vulkan {
                 set({0,0,0,0});
                 min({0, 0, 0, 0});
                 max({255, 255, 255, 255});
-            }  else if constexpr(std::is_same<P, std::string>::value) {
+            } else if constexpr(std::is_same<P, std::string>::value) {
                 _type = Type::p_string;
                 set("placeholder");
+            } else if constexpr(std::is_same<P, Frame>::value) {
+                _type = Type::p_frame;
+                set(Frame{0});
             } 
         }
         ~Parameter() = default;
@@ -142,7 +178,9 @@ namespace vulkan {
         static constexpr bool is_numeric() {
             if constexpr(std::is_same<Q, std::string>::value) {
                 return false;
-            } 
+            } else if constexpr (std::is_same<Q, Frame>::value) {
+                return false;
+            }
             return true;
         }
 
@@ -155,6 +193,24 @@ namespace vulkan {
             memcpy(_data.data(), &p, sizeof(P));
             _changed = true;
         }
+
+        void set_default(P p) {
+            if constexpr (std::is_same<P, Frame>::value) {
+                static_assert("Cannot set default on frame parameter!");
+            }
+            if (!_set_default) {
+                set(p);
+                _set_default = true;
+            }
+        }
+
+        void set_from(const Parameter<P>& rhs) {
+            set(rhs.get());
+            min(rhs.min());
+            max(rhs.max());
+        }
+
+        void set_from(const std::shared_ptr<ParameterInterface>& rhs) override { set_from(rhs->as<P>()); }
 
         P get() const { return _value; }
 
@@ -178,9 +234,11 @@ namespace vulkan {
         void tag(const std::string& t) override { _tags.insert(t); } 
         
         template <class Archive>
-        void serialize( Archive & ar )
+        void serialize(Archive& ar, const uint32_t version)
         {
-            ar(cereal::base_class<ParameterInterface>(this), _type, _value, _min, _max, _data, _offset, _name, _tags);
+            if (version == 0) {
+                ar(cereal::base_class<ParameterInterface>(this), _type, _value, _min, _max, _data, _offset, _name, _tags, _set_default);
+            }
         }
     private:
         Type _type;
@@ -191,6 +249,32 @@ namespace vulkan {
         size_t _offset;
         std::string _name;
         std::set<std::string> _tags;
+
+        std::atomic_bool _set_default = false;
+    };
+
+    class ParameterCache {
+    public:
+        ~ParameterCache() = default;
+
+        static void add(ParameterType p, const std::string& name, const std::shared_ptr<ParameterInterface>& param);
+        static bool has(ParameterType p, const std::string& name);
+        static std::shared_ptr<ParameterInterface> get(ParameterType p, const std::string& name);
+        static bool remove(ParameterType p, const std::string& name);
+
+        static std::string make_hash(ParameterType p, const std::string& name);
+    private:
+        static void _make();
+        void _add(const std::string& hash, const std::shared_ptr<ParameterInterface>& param);
+        bool _has(const std::string& hash);
+        std::shared_ptr<ParameterInterface> _get(const std::string& hash);
+        bool _remove(const std::string& hash);
+    
+        ParameterCache() = default;
+
+        static std::unique_ptr<ParameterCache> _singleton;
+        static std::mutex _param_mutex;
+        std::map<std::string, std::shared_ptr<ParameterInterface>> _params;
     };
 
     template<ParameterType T> struct _ptype;
@@ -204,36 +288,45 @@ namespace vulkan {
     template<> struct _ptype<ParameterType::p_uvec2> { using type = glm::uvec2; };
     template<> struct _ptype<ParameterType::p_uvec4> { using type = glm::uvec4; };
     template<> struct _ptype<ParameterType::p_string> { using type = std::string; };
+    template<> struct _ptype<ParameterType::p_frame> { using type = Frame; };
 
     template<ParameterType T> 
-    std::shared_ptr<ParameterInterface> make_param(const std::string& name, size_t offset) { 
+    std::shared_ptr<ParameterInterface> make_param(const std::string& hash, const std::string& name, size_t offset) { 
+        if (ParameterCache::has(T, hash + name)) {
+            auto param = ParameterCache::get(T, hash + name);
+            param->set_changed();
+            return param;
+        }
         auto param = std::make_shared<Parameter<typename _ptype<T>::type>>(); 
         param->name(name);
         param->offset(offset);
+        ParameterCache::add(T, hash + name, param);
         return param;
     }
-
 }
-
-CEREAL_REGISTER_TYPE(vulkan::ParameterInterface)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<float>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<int>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<unsigned int>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<glm::vec2>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<glm::vec4>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<glm::ivec2>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<glm::ivec4>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<glm::uvec2>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<glm::uvec4>)
-CEREAL_REGISTER_TYPE(vulkan::Parameter<std::string>)/*
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<float>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<int>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<unsigned int>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<glm::vec2>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<glm::vec4>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<glm::ivec2>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<glm::ivec4>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<glm::uvec2>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<glm::uvec4>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vulkan::ParameterInterface, vulkan::Parameter<std::string>)
+/*
+CEREAL_REGISTER_TYPE(vkd::ParameterInterface)
+CEREAL_REGISTER_TYPE(vkd::Parameter<float>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<int>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<unsigned int>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<glm::vec2>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<glm::vec4>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<glm::ivec2>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<glm::ivec4>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<glm::uvec2>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<glm::uvec4>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<std::string>)
+CEREAL_REGISTER_TYPE(vkd::Parameter<vkd::Frame>)
+*/
+/*
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<float>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<int>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<unsigned int>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::vec2>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::vec4>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::ivec2>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::ivec4>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::uvec2>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::uvec4>)
+CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<std::string>)
 */

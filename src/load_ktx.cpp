@@ -5,7 +5,7 @@
 
 #include "command_buffer.hpp"
 
-namespace vulkan {
+namespace vkd {
     std::shared_ptr<Image> load_ktx(std::shared_ptr<Device> device, const std::string& path, VkImageUsageFlags usage_flags, VkImageLayout layout) {
         ktxTexture * target = nullptr;
 		ktxResult result = ktxTexture_CreateFromNamedFile(path.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &target);			
@@ -23,20 +23,20 @@ namespace vulkan {
         image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
 
-        auto staging = std::make_shared<vulkan::StagingImage>(device);
+        auto staging = std::make_shared<vkd::StagingImage>(device);
         staging->create_image(VK_FORMAT_R8G8B8A8_UNORM, width, height);
 
         auto ptr = staging->map();
         memcpy(ptr, ktxTextureData, ktxTextureSize);
         staging->unmap();
 
-        auto buf = vulkan::begin_immediate_command_buffer(device->logical_device(), device->command_pool());
+        auto buf = vkd::begin_immediate_command_buffer(device->logical_device(), device->command_pool());
 
         image->copy(*staging, buf);
 
         image->set_layout(buf, layout, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-        vulkan::flush_command_buffer(device->logical_device(), device->queue(), device->command_pool(), buf);
+        vkd::flush_command_buffer(device->logical_device(), device->queue(), device->command_pool(), buf);
 
 
         return image;

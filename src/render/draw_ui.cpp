@@ -17,10 +17,10 @@
 
 #include "imgui/imgui_impl_vulkan.h"
 
-namespace vulkan {
-    class ImGuiPipelineLayout : public vulkan::PipelineLayout {
+namespace vkd {
+    class ImGuiPipelineLayout : public vkd::PipelineLayout {
     public:
-        using vulkan::PipelineLayout::PipelineLayout;
+        using vkd::PipelineLayout::PipelineLayout;
 
         void constant(VkPipelineLayoutCreateInfo& info) override {
 
@@ -33,8 +33,8 @@ namespace vulkan {
         }
     };
 
-    class ImGuiPipeline : public vulkan::GraphicsPipeline {
-        using vulkan::GraphicsPipeline::GraphicsPipeline;
+    class ImGuiPipeline : public vkd::GraphicsPipeline {
+        using vkd::GraphicsPipeline::GraphicsPipeline;
 
         void _blend_attachments() override {
             VkPipelineColorBlendAttachmentState blend_attachment_state = {};
@@ -114,7 +114,7 @@ struct ImGui_ImplVulkan_InitInfo
             VK_CHECK_RESULT(err);
         }
 
-        //_desc_pool = std::make_shared<vulkan::DescriptorPool>(_device);
+        //_desc_pool = std::make_shared<vkd::DescriptorPool>(_device);
         //_desc_pool->add_combined_image_sampler(2);
         //_desc_pool->create(1); // one for gfx, one for compute
 
@@ -129,25 +129,25 @@ struct ImGui_ImplVulkan_InitInfo
 
         ImGui_ImplVulkan_Init(&imgui_init, _renderpass->get());
 
-        auto buf = vulkan::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
         ImGui_ImplVulkan_CreateFontsTexture(buf);
-        vulkan::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
+        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
 
 
         /*
         create_font();
 
-        _sampler = vulkan::create_sampler(_device->logical_device());
+        _sampler = vkd::create_sampler(_device->logical_device());
 
-        _desc_pool = std::make_shared<vulkan::DescriptorPool>(_device);
+        _desc_pool = std::make_shared<vkd::DescriptorPool>(_device);
         _desc_pool->add_combined_image_sampler(2);
         _desc_pool->create(1); // one for gfx, one for compute
 
-        _desc_set_layout = std::make_shared<vulkan::DescriptorLayout>(_device);
+        _desc_set_layout = std::make_shared<vkd::DescriptorLayout>(_device);
         _desc_set_layout->add(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
         _desc_set_layout->create();
 
-        _desc_set = std::make_shared<vulkan::DescriptorSet>(_device, _desc_set_layout, _desc_pool);
+        _desc_set = std::make_shared<vkd::DescriptorSet>(_device, _desc_set_layout, _desc_pool);
         _desc_set->add_image(*_font_images[0], _sampler);
         _desc_set->create();
 
@@ -156,11 +156,11 @@ struct ImGui_ImplVulkan_InitInfo
 
         _pipeline = std::make_shared<ImGuiPipeline>(_device, _pipeline_cache, _renderpass);
 
-        auto shader_stages = std::make_unique<vulkan::Shader>(_device);
+        auto shader_stages = std::make_unique<vkd::Shader>(_device);
         shader_stages->add(VK_SHADER_STAGE_VERTEX_BIT, "shaders/base/uioverlay.vert.spv", "main");
         shader_stages->add(VK_SHADER_STAGE_FRAGMENT_BIT, "shaders/base/uioverlay.frag.spv", "main");
         
-        auto vertex_input = std::make_unique<vulkan::VertexInput>();
+        auto vertex_input = std::make_unique<vkd::VertexInput>();
         vertex_input->add_binding(0, sizeof(ImDrawVert), VK_VERTEX_INPUT_RATE_VERTEX);
         vertex_input->add_attribute(0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(ImDrawVert, pos));
         vertex_input->add_attribute(0, 1, VK_FORMAT_R32G32_SFLOAT, offsetof(ImDrawVert, uv));
@@ -189,12 +189,12 @@ struct ImGui_ImplVulkan_InitInfo
         // Vertex buffer
         if (_vertex_buf == nullptr || (vbuffer_size != _vertex_buf->requested_size())) {
             if (_vertex_buf) {
-                auto buf = vulkan::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+                auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
                 _vertex_buf->barrier(buf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
                 flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
             }
             
-            _vertex_buf = std::make_shared<vulkan::VertexBuffer>(_device);
+            _vertex_buf = std::make_shared<vkd::VertexBuffer>(_device);
             _vertex_buf->create(vbuffer_size);
             update_buffers = true;
         }
@@ -202,11 +202,11 @@ struct ImGui_ImplVulkan_InitInfo
         // Index buffer
         if (_index_buf == nullptr || (ibuffer_size > _index_buf->requested_size())) {
             if (_index_buf) {
-                auto buf = vulkan::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+                auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
                 _index_buf->barrier(buf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
                 flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
             }
-            _index_buf = std::make_shared<vulkan::IndexBuffer>(_device);
+            _index_buf = std::make_shared<vkd::IndexBuffer>(_device);
             _index_buf->create(ibuffer_size);
             update_buffers = true;
         }
@@ -299,7 +299,7 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
         */
     }
 
-    void DrawUI::execute(VkSemaphore wait_semaphore) {
+    void DrawUI::execute(VkSemaphore wait_semaphore, VkFence fence) {
 
     }
 
@@ -311,19 +311,19 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
         int width = 0, height = 0;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
-        auto staging = std::make_shared<vulkan::StagingImage>(_device);
+        auto staging = std::make_shared<vkd::StagingImage>(_device);
         staging->create_image(VK_FORMAT_R8G8B8A8_UNORM, width, height);
 
         auto ptr = staging->map();
         memcpy(ptr, pixels, width * height * 4);
         staging->unmap();
 
-        auto fontI = std::make_shared<vulkan::Image>(_device);
+        auto fontI = std::make_shared<vkd::Image>(_device);
         fontI->create_image(VK_FORMAT_R8G8B8A8_UNORM, width, height, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         fontI->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         fontI->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
-        auto buf = vulkan::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
 
         fontI->set_layout(buf, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
@@ -331,7 +331,7 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
 
         fontI->set_layout(buf, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-        vulkan::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
+        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
 
         _font_images.push_back(fontI);
         io.Fonts->TexID = (void*)(_font_images.size() - 1);

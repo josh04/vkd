@@ -11,12 +11,12 @@
 #include "vertex_input.hpp"
 #include "viewport_and_scissor.hpp"
 
-namespace vulkan {
+namespace vkd {
     REGISTER_NODE("draw_particles", "draw particles", DrawParticles);
 
-    class ParticlePipelineLayout : public vulkan::PipelineLayout {
+    class ParticlePipelineLayout : public vkd::PipelineLayout {
     public:
-        using vulkan::PipelineLayout::PipelineLayout;
+        using vkd::PipelineLayout::PipelineLayout;
 
         void constant(VkPipelineLayoutCreateInfo& info) override {
 
@@ -109,7 +109,7 @@ namespace vulkan {
         vkCmdDraw(buf, PARTICLE_COUNT, 1, 0, 0);
     }
 
-    void DrawParticles::execute(VkSemaphore wait_semaphore) {
+    void DrawParticles::execute(VkSemaphore wait_semaphore, VkFence fence) {
 
     }
 }

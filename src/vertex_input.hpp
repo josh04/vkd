@@ -5,7 +5,7 @@
 
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class VertexInput {
     public:
         VertexInput() = default;

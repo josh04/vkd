@@ -4,7 +4,7 @@
 #include <vector>
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Device;
 	class DescriptorPool {
 	public:

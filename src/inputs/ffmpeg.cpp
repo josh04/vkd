@@ -10,25 +10,36 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
-namespace vulkan {
+namespace vkd {
     REGISTER_NODE("ffmpeg", "ffmpeg", Ffmpeg);
 
-    Ffmpeg::Ffmpeg() {
-        _path_param = make_param<ParameterType::p_string>("path", 0);
-        _path_param->as<std::string>().set("test.mp4");
+    Ffmpeg::BlockEditParams::BlockEditParams(ShaderParamMap& map) {
+        
+        frame_start_block = make_param<ParameterType::p_frame>("", "frame_start_block", 0);
+        frame_end_block = make_param<ParameterType::p_frame>("", "frame_end_block", 0);
+        content_relative_start = make_param<ParameterType::p_frame>("", "content_relative_start", 0);
+
+        map["_"].emplace(frame_start_block->name(), frame_start_block);
+        map["_"].emplace(frame_end_block->name(), frame_end_block);
+        map["_"].emplace(content_relative_start->name(), content_relative_start);
+    }
+
+    Ffmpeg::Ffmpeg() : _block(_params) {
+        _path_param = make_param<ParameterType::p_string>("", "path", 0);
+        _path_param->as<std::string>().set_default("test.mp4");
         _path_param->tag("filepath");
+
+        _frame_param = make_param<ParameterType::p_frame>("", "frame", 0);
+        
         _params["_"].emplace(_path_param->name(), _path_param);
-        _local_timeline = std::make_shared<SequencerLine>();
+        _params["_"].emplace(_frame_param->name(), _frame_param);
+
     }
 
     Ffmpeg::~Ffmpeg() {
         avcodec_close(_codec_context);
         av_free(_codec_context);
         avformat_free_context(_format_context);
-
-        if (_timeline) {
-            _timeline->remove_line(_local_timeline);
-        }
     }
 
     void Ffmpeg::init() {
@@ -47,8 +58,6 @@ namespace vulkan {
                 }
             );
         });
-
-        _timeline->add_line(_local_timeline);
 
         _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
         _compute_complete = create_semaphore(_device->logical_device());
@@ -101,48 +110,61 @@ namespace vulkan {
         
         size_t buffer_size = _width * _height * 1.5 * sizeof(uint8_t);
 
-        _buffer = std::make_shared<StagingBuffer>(_device);
-        _buffer->create(buffer_size);
-        _buffer_ptr = (uint32_t*)_buffer->map();
+        _staging_buffer = std::make_shared<StagingBuffer>(_device);
+        _staging_buffer->create(buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        _staging_buffer_ptr = (uint32_t*)_staging_buffer->map();
 
-        _image = std::make_shared<vulkan::Image>(_device);
+        _gpu_buffer = std::make_shared<StorageBuffer>(_device);
+        _gpu_buffer->create(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+        _image = std::make_shared<vkd::Image>(_device);
         _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
         _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
-        _yuv420 = std::make_shared<Kernel>(_device);
-        _yuv420->init("shaders/compute/yuv420.comp.spv", "main", {16, 16, 1});
-        register_params(*_yuv420);
-        _yuv420->set_arg(0, _buffer);
-        _yuv420->set_arg(1, _image);
-        _yuv420->update();
-
-        auto buf = vulkan::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
 
         _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-        vulkan::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
+        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
 
-        
+        _yuv420 = std::make_shared<Kernel>(_device, param_hash_name());
+        _yuv420->init("shaders/compute/yuv420.comp.spv", "main", {16, 16, 1});
+        register_params(*_yuv420);
+        _yuv420->set_arg(0, _gpu_buffer);
+        _yuv420->set_arg(1, _image);
+        _yuv420->update();
+
         begin_command_buffer(_compute_command_buffer);
-        
+
+        _gpu_buffer->copy(*_staging_buffer, buffer_size, _compute_command_buffer);
+        _gpu_buffer->barrier(_compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
         _yuv420->dispatch(_compute_command_buffer, _width, _height);
+        
         end_command_buffer(_compute_command_buffer);
 
-        _local_timeline->frame_count = _frame_count;
+        //_local_timeline->frame_count = _frame_count;
 
-        _local_timeline->name = _path_param->as<std::string>().get().c_str();
+        //_local_timeline->name = _path_param->as<std::string>().get().c_str();
+
+        _current_frame = 0;
     }
 
     bool Ffmpeg::update() {
+        bool updated = false;
 
-        if (_local_timeline->frame_jumped) {
-            scrub(_timeline->current_frame());
-            _local_timeline->frame_jumped = false;
+        scrub(_frame_param->as<Frame>().get());
+
+        if (_force_scrub) {
+            //scrub(_timeline->current_frame());
+            //_local_timeline->frame_jumped = false;
+            _force_scrub = false;
+            updated = true;
         }
 
         // Wait for new frame
-        if (_next_frame) {
+        if (_decode_next_frame) {
             std::shared_ptr<AVFrame> avFrame(av_frame_alloc(), [](AVFrame* a){ av_frame_free(&a); });
 
             bool got_frame = false;
@@ -181,16 +203,19 @@ namespace vulkan {
 
             if (!_eof) {
                 for (int j = 0; j < _height; ++j) {
-                    memcpy((uint8_t*)_buffer_ptr + j * _width,                                  avFrame->data[0] + j * avFrame->linesize[0], _width);
+                    memcpy((uint8_t*)_staging_buffer_ptr + j * _width, avFrame->data[0] + j * avFrame->linesize[0], _width);
                     if (j < _height / 2) {
-                        memcpy((uint8_t*)_buffer_ptr + _width * _height       + j * _width/2,   avFrame->data[1] + j * avFrame->linesize[1], _width/2);
-                        memcpy((uint8_t*)_buffer_ptr + _width * _height * 5/4 + j * _width/2,   avFrame->data[2] + j * avFrame->linesize[2], _width/2);
+                        memcpy((uint8_t*)_staging_buffer_ptr + _width * _height       + j * _width/2,   avFrame->data[1] + j * avFrame->linesize[1], _width/2);
+                        memcpy((uint8_t*)_staging_buffer_ptr + _width * _height * 5/4 + j * _width/2,   avFrame->data[2] + j * avFrame->linesize[2], _width/2);
                     }
                 }
             }
+
+            _decode_next_frame = false;
+            updated = true;
         }
 
-        _next_frame = _timeline->play();
+        //_decode_next_frame = _timeline->play();
         _target_pts = 0;
 
         /*
@@ -204,39 +229,49 @@ namespace vulkan {
         }
         */
 
-        return false;
+        return updated;
     }
 
-    void Ffmpeg::execute(VkSemaphore wait_semaphore) {
-        submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete);
+    void Ffmpeg::execute(VkSemaphore wait_semaphore, VkFence fence) {
+        _last_fence = fence;
+        submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 
-    void Ffmpeg::scrub(int64_t i) {
-        if (i > _local_timeline->frame_count) {
-            i = _local_timeline->frame_count - 1;
-        }
-        int64_t pos = 0;
-        if (_video_stream->time_base.num) {
-            pos = i * _video_stream->r_frame_rate.den;
+    void Ffmpeg::scrub(const Frame& frame) {
+        auto i = frame.index;
+        if (i == _current_frame) {
+            return;
+        } else if (i == _current_frame + 1) {
+            _decode_next_frame = true;
+            _current_frame = i;
         } else {
-            pos = i * AV_TIME_BASE;
-        }
+            if (i > _frame_count) {
+                i = _frame_count - 1;
+            }
+            int64_t pos = 0;
+            if (_video_stream->time_base.num) {
+                pos = i * _video_stream->r_frame_rate.den;
+            } else {
+                pos = i * AV_TIME_BASE;
+            }
 
-        //std::cout << "seek pos: " << pos << std::endl;
+            //std::cout << "seek pos: " << pos << std::endl;
 
-        if (pos < 0) {
-            throw std::runtime_error("uh oh");
-        }
-        
-        if (0 > avformat_seek_file(_format_context, _video_stream->index, INT64_MIN, pos, INT64_MAX, 0)) {
-            throw std::runtime_error("failed to seek");
-        }
+            if (pos < 0) {
+                throw std::runtime_error("uh oh");
+            }
+            
+            if (0 > avformat_seek_file(_format_context, _video_stream->index, INT64_MIN, pos, INT64_MAX, 0)) {
+                throw std::runtime_error("failed to seek");
+            }
 
-        avcodec_flush_buffers(_codec_context);
-        _next_frame = true;
-        
-        _target_pts = pos;
-        _eof = false;
+            avcodec_flush_buffers(_codec_context);
+            _decode_next_frame = true;
+            _current_frame = i;
+            
+            _target_pts = pos;
+            _eof = false;
+        }
     }
 
 }

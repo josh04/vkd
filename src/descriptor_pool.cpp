@@ -1,7 +1,7 @@
 #include "descriptor_pool.hpp"
 #include "device.hpp"
 
-namespace vulkan {
+namespace vkd {
     
     void DescriptorPool::add_storage_image(uint32_t count) {
         if (count > 0) {

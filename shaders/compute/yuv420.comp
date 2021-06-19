@@ -35,8 +35,8 @@ void main()
     ivec2 dim = imageSize(outputTex);
 
     uint y = uint8_buffer(dim.x * coord.y + coord.x);
-    uint u = uint8_buffer(dim.x * dim.y + dim.x/2 * int(floor(coord.y/2.0)) + int(floor(coord.x/2)));
-    uint v = uint8_buffer(dim.x * dim.y * 5 / 4 + dim.x/2 * int(floor(coord.y/2.0)) + int(floor(coord.x/2)));
+    uint u = uint8_buffer(dim.x * dim.y + dim.x/2 * int(floor(coord.y/2.0)) + int(floor(coord.x/2.0)));
+    uint v = uint8_buffer(dim.x * dim.y * 5 / 4 + dim.x/2 * int(floor(coord.y/2.0)) + int(floor(coord.x/2.0)));
 
     vec4 yuv = vec4((y - 16.0) / 235.0, u / 255.0, v / 255.0, 1.0);
     vec4 rgb = bt709yuvrgb(yuv);

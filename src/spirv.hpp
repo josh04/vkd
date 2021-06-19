@@ -6,7 +6,7 @@
 
 #include "spirv_reflect.h"
 
-namespace vulkan {
+namespace vkd {
 
 	// Vulkan loads its shaders from an immediate binary representation called SPIR-V
 	// Shaders are compiled offline from e.g. GLSL using the reference glslang compiler

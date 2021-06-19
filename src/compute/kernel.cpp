@@ -6,7 +6,7 @@
 #include "image.hpp"
 #include "buffer.hpp"
 
-namespace vulkan {
+namespace vkd {
     void Kernel::init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes) {
         memset(&_constants, 0, sizeof(ExecutionConstants));
         _pipeline_cache = std::make_shared<PipelineCache>(_device);
@@ -30,36 +30,43 @@ namespace vulkan {
         }
 
         _local_group_sizes = local_sizes;
+        std::string param_hash_full = _param_hash + "_" + path + "_"; 
 
         for (auto&& pair : _shader->push_constant_types()) {
             std::shared_ptr<ParameterInterface> param = nullptr;
             switch (pair.type) {
             case ParameterType::p_float:
-                param = make_param<ParameterType::p_float>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_float>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_int:
-                param = make_param<ParameterType::p_int>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_int>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_uint:
-                param = make_param<ParameterType::p_uint>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_uint>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_vec2:
-                param = make_param<ParameterType::p_vec2>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_vec2>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_vec4:
-                param = make_param<ParameterType::p_vec4>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_vec4>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_ivec2:
-                param = make_param<ParameterType::p_ivec2>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_ivec2>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_ivec4:
-                param = make_param<ParameterType::p_ivec4>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_ivec4>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_uvec2:
-                param = make_param<ParameterType::p_uvec2>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_uvec2>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_uvec4:
-                param = make_param<ParameterType::p_uvec4>(pair.name, pair.offset);
+                param = make_param<ParameterType::p_uvec4>(param_hash_full, pair.name, pair.offset);
+                break;
+            case ParameterType::p_string:
+                throw std::runtime_error("can't pass string param to kernel");
+                break;
+            case ParameterType::p_frame:
+                param = make_param<ParameterType::p_frame>(param_hash_full, pair.name, pair.offset);
                 break;
             }
             _params.emplace(pair.name, param);
@@ -155,7 +162,7 @@ namespace vulkan {
 
         for (auto&& param : _params) {
             //if (param.second->changed()) {
-                std::cout << _shader->path() << ": " << param.second->name() << " size: " << param.second->size() << " offset: " << param.second->offset() << std::endl;
+                //std::cout << _shader->path() << ": " << param.second->name() << " size: " << param.second->size() << " offset: " << param.second->offset() << std::endl;
                 set_push_arg(buf, *param.second);
             //}
         }

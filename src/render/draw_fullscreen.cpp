@@ -12,7 +12,7 @@
 #include "viewport_and_scissor.hpp"
 #include "sampler.hpp"
 
-namespace vulkan {
+namespace vkd {
     REGISTER_NODE("draw", "draw", DrawFullscreen);
 
     void DrawFullscreen::init() {
@@ -120,7 +120,7 @@ namespace vulkan {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawFullscreen::execute(VkSemaphore wait_semaphore) {
-
+    void DrawFullscreen::execute(VkSemaphore wait_semaphore, VkFence fence) {
+        submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
     }
 }

@@ -4,7 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace vulkan {
+namespace vkd {
 	static glm::mat4 get_perspective(float fov, float aspect, float znear, float zfar, bool flip_y) {
 		glm::mat4 pers = glm::perspective(glm::radians(fov), aspect, znear, zfar);
 		if (flip_y) {

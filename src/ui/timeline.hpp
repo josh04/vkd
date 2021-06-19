@@ -3,19 +3,38 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include "parameter.hpp"
 #include "imgui/imgui.h"
 #include "imgui/ImSequencer.h"
 
-namespace vulkan {
+namespace vkd {
+    class MainUI;
     struct SequencerLine {
         std::string name;
-        int32_t start = 0;
-        int32_t end = 100;
-        uint32_t colour = 0x999999FF;
+        struct Block {
+            int32_t start = 0;
+            int32_t end = 100;
+            uint32_t colour = 0x999999FF;
+
+            template <class Archive>
+            void serialize(Archive & ar, const uint32_t version) {
+                if (version == 0) {
+                    ar(start, end, colour);
+                }
+            }
+        };
+        std::vector<Block> blocks{1};
 
         int32_t frame_count = 0;
 
         bool frame_jumped = false;
+
+        template <class Archive>
+        void serialize(Archive & ar, const uint32_t version) {
+            if (version == 0) {
+                ar(name, blocks, frame_count, frame_jumped);
+            }
+        }
     };
 
     struct SequencerImpl : public ImSequencer::SequenceInterface {
@@ -30,13 +49,13 @@ namespace vulkan {
         void Get(int index, int** start, int** end, int* type, unsigned int* colour) override {
             if (index < lines.size()) {
                 if (start) {
-                    *start = &lines[index]->start;
+                    *start = &lines[index]->blocks[0].start;
                 }
                 if (end) {
-                    *end = &lines[index]->end;
+                    *end = &lines[index]->blocks[0].end;
                 }
                 if (colour) {
-                    *colour = lines[index]->colour;
+                    *colour = lines[index]->blocks[0].colour;
                 }
             }
         }
@@ -58,6 +77,13 @@ namespace vulkan {
         int first_frame = 0;
 
         int frame_max = 100;
+
+        template <class Archive>
+        void serialize(Archive & ar, const uint32_t version) {
+            if (version == 0) {
+                ar(lines, p1, p2, selected_entry, first_frame, frame_max);
+            }
+        }
     };
 
     class Timeline {
@@ -79,15 +105,22 @@ namespace vulkan {
             }
         }
 
-        void draw();
+        void draw(MainUI& ui, bool& graph_changed);
 
         bool play() const { return _play; }
         auto current_frame() const { return _current_frame; }
+        void increment() { _current_frame.index++; }
 
+        template <class Archive>
+        void serialize(Archive & ar, const uint32_t version) {
+            if (version == 0) {
+                ar(_sequencer, _play, _current_frame, _expanded);
+            }
+        }
     private:
         std::unique_ptr<SequencerImpl> _sequencer = nullptr;
         bool _play = false;
-        int32_t _current_frame = 0;
+        Frame _current_frame = {0};
 
         bool _expanded = true;
     };

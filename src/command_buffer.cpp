@@ -1,7 +1,7 @@
 #include "command_buffer.hpp"
 #include "compute/kernel.hpp"
 
-namespace vulkan {
+namespace vkd {
     VkCommandBuffer create_command_buffer(VkDevice logical_device, VkCommandPool pool) {
         VkCommandBufferAllocateInfo commandBufferAllocateInfo{};
         memset(&commandBufferAllocateInfo, 0, sizeof(VkCommandBufferAllocateInfo));
@@ -15,16 +15,21 @@ namespace vulkan {
     }
 
     void begin_command_buffer(VkCommandBuffer buf) {
+		begin_command_buffer(buf, VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+    }
+
+    void begin_command_buffer(VkCommandBuffer buf, VkCommandBufferUsageFlags flags) {
 		VkCommandBufferBeginInfo command_buffer_begin_info = {};
 		command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		command_buffer_begin_info.pNext = nullptr;
+		command_buffer_begin_info.flags = flags;
 
         VK_CHECK_RESULT(vkBeginCommandBuffer(buf, &command_buffer_begin_info));
     }
 
     VkCommandBuffer begin_immediate_command_buffer(VkDevice logical_device, VkCommandPool pool) {
 		auto buf = create_command_buffer(logical_device, pool);
-		begin_command_buffer(buf);
+		begin_command_buffer(buf, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 		return buf;
 	}
 
@@ -61,22 +66,22 @@ namespace vulkan {
 		vkFreeCommandBuffers(device, pool, 1, &buf);
 	}
 
-	void submit_command_buffer(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, VkSemaphore wait, VkSemaphore signal) {
+	void submit_command_buffer(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, VkSemaphore wait, VkSemaphore signal, VkFence fence) {
 		// Submit compute commands
 		VkSubmitInfo submit_info = {};
 		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submit_info.commandBufferCount = 1;
-		submit_info.pCommandBuffers = &buf;
+		submit_info.commandBufferCount = (buf != VK_NULL_HANDLE) ? 1 : 0;
+		submit_info.pCommandBuffers = (buf != VK_NULL_HANDLE) ? &buf : VK_NULL_HANDLE;
 		submit_info.waitSemaphoreCount = (wait != VK_NULL_HANDLE) ? 1 : 0;
 		submit_info.pWaitSemaphores = (wait != VK_NULL_HANDLE) ? &wait : nullptr;
 		submit_info.pWaitDstStageMask = &wait_stage_mask;
 		submit_info.signalSemaphoreCount = (signal != VK_NULL_HANDLE) ? 1 : 0;
 		submit_info.pSignalSemaphores = &signal;
-		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE));
+		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence));
 	}
 
-	void submit_compute_buffer(VkQueue queue, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal) {
-		submit_command_buffer(queue, buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, wait, signal);
+	void submit_compute_buffer(VkQueue queue, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal, VkFence fence) {
+		submit_command_buffer(queue, buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, wait, signal, fence);
 	}
 
 }

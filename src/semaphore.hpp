@@ -1,7 +1,7 @@
 #pragma once
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     static VkSemaphore create_semaphore(VkDevice logical_device) {
         // Semaphores (Used for correct command ordering)
 		VkSemaphoreCreateInfo semaphore_create_info = {};

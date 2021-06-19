@@ -6,7 +6,7 @@
 
 #include "instance.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Device {
     public:
         Device(std::shared_ptr<Instance> instance) : _instance(instance) {}
@@ -31,6 +31,10 @@ namespace vulkan {
         const auto& device_supported_extensions() const { return _device_supported_extensions; }
         const auto& device_extensions_enabled() const { return _device_extensions_enabled; }
         const auto& memory_properties() const { return _memory_properties; }
+
+        const auto& features() const { return _physical_features.features; }
+        const auto& ext_8bit_features() const { return _8bit_features; }
+        const auto& ext_16bit_features() const { return _16bit_features; }
     private:
         void populate_physical_device_props(VkPhysicalDevice device);
         std::shared_ptr<Instance> _instance;
@@ -46,6 +50,11 @@ namespace vulkan {
         std::vector<std::string> _device_supported_extensions;
 
         VkPhysicalDeviceMemoryProperties _memory_properties;
+        VkPhysicalDeviceFeatures2 _physical_features;
+        VkPhysicalDevice8BitStorageFeaturesKHR _8bit_features;
+        VkPhysicalDevice16BitStorageFeatures _16bit_features;
+
+        PFN_vkGetPhysicalDeviceFeatures2KHR ext_vkGetPhysicalDeviceFeatures2KHR;
 
     };
 }

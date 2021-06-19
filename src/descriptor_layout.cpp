@@ -1,7 +1,7 @@
 #include "descriptor_layout.hpp"
 #include "device.hpp"
 
-namespace vulkan {
+namespace vkd {
     
     void DescriptorLayout::add(VkDescriptorType type, uint32_t count, VkShaderStageFlags stage) {
         VkDescriptorSetLayoutBinding layout_binding = {};

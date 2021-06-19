@@ -18,7 +18,7 @@ extern "C" {
 #include "render/draw_ui.hpp"
 #include "ui/nodes.hpp"
 
-namespace vulkan {
+namespace vkd {
 	class Device;
 }
 
@@ -85,10 +85,10 @@ void render(float anim_time)
 	*/
 
 	ui->preRender();
-	vulkan::ui();
+	vkd::ui();
 	//ImGui::ShowDemoWindow();
 	ui->render();
-	vulkan::draw();
+	vkd::draw();
 }
 
 int main(int argc, char** argv) {
@@ -107,12 +107,20 @@ int main(int argc, char** argv) {
 	height_sm = dm.h;
 
 #if defined(unix) and !defined(__APPLE__)
-	auto winflag = SDL_WINDOW_OPENGL;
+	int winflag = SDL_WINDOW_OPENGL;
 #else
-	auto winflag = SDL_WINDOW_VULKAN;
+	int winflag = SDL_WINDOW_VULKAN;
 #endif
 
-    auto win = sdl2::make_window("Demo", 0, 0, width_sm, height_sm, SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN | winflag);
+	int x = 0;
+	int y = 0;
+#ifdef __APPLE__
+	//winflag |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+	height_sm -= 22;
+	y += 22;
+#endif
+
+    auto win = sdl2::make_window("Demo", x, y, width_sm, height_sm, SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN | winflag);
     if (!win) {
         std::cerr << "Error creating window: " << SDL_GetError() << std::endl;
         return 1;
@@ -156,7 +164,7 @@ int main(int argc, char** argv) {
 
 	ui = std::make_unique<imguiDrawer>(width_sm, height_sm, true);
 	try {
-		vulkan::init(win.get(), renderer.get());
+		vkd::init(win.get(), renderer.get());
 	} catch (std::runtime_error& e) {
 		std::cout << e.what() << std::endl;
 		return 0;
@@ -198,7 +206,7 @@ int main(int argc, char** argv) {
 					if (e.key.keysym.sym == SDLK_ESCAPE) {
 						quit = true;
 					} else if (e.key.keysym.sym == SDLK_TAB) {
-						vulkan::get_ui().toggle_ui();
+						vkd::get_ui().toggle_ui();
 					}
 				}
 			}
@@ -212,7 +220,7 @@ int main(int argc, char** argv) {
 		//SDL_GL_SwapWindow(win.get());
 	}
 
-	vulkan::shutdown();
+	vkd::shutdown();
 
 #if defined(unix) and !defined(__APPLE__)
 	SDL_GL_DeleteContext(glContext);

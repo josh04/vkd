@@ -4,7 +4,7 @@
 
 #include "image.hpp"
 
-namespace vulkan {
+namespace vkd {
     std::shared_ptr<Image> load_ktx(std::shared_ptr<Device> device, const std::string& path, VkImageUsageFlags usage_flags, VkImageLayout layout);
 
 }

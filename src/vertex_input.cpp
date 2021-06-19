@@ -1,7 +1,7 @@
 #include "vertex_input.hpp"
 #include "pipeline.hpp"
 
-namespace vulkan {
+namespace vkd {
     void VertexInput::add_binding(uint32_t binding, uint32_t stride, VkVertexInputRate input_rate) {
         VkVertexInputBindingDescription vertex_binding_desc = {};
 		vertex_binding_desc.binding = binding;

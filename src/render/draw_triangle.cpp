@@ -10,7 +10,7 @@
 #include "vertex_input.hpp"
 #include "viewport_and_scissor.hpp"
 
-namespace vulkan {
+namespace vkd {
     REGISTER_NODE("triangles", "draw triangle", DrawTriangle, 16.0f/9.0f);
 
     void DrawTriangle::init() {
@@ -107,7 +107,7 @@ namespace vulkan {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawTriangle::execute(VkSemaphore wait_semaphore) {
+    void DrawTriangle::execute(VkSemaphore wait_semaphore, VkFence fence) {
 
     }
 }

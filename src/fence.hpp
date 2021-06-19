@@ -2,7 +2,7 @@
 #include "vulkan.hpp"
 #include "semaphore.hpp"
 
-namespace vulkan {
+namespace vkd {
     static VkFence create_fence(VkDevice logical_device, bool signalled) {
         VkFenceCreateInfo fence_create_info{};
         memset(&fence_create_info, 0, sizeof(VkFenceCreateInfo));

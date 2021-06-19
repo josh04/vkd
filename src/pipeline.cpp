@@ -8,7 +8,7 @@
 #include "shader.hpp"
 #include "vertex_input.hpp"
 
-namespace vulkan {
+namespace vkd {
     void PipelineLayout::create(VkDescriptorSetLayout desc_set_layout) {
         // Create the pipeline layout that is used to generate the rendering pipelines that are based on this descriptor set layout
 		// In a more complex scenario you would have different pipeline layouts for different descriptor set layouts that could be reused

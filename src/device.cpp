@@ -6,13 +6,15 @@
 #endif
 #include <algorithm>
 
-namespace vulkan {
+namespace vkd {
     Device::~Device() {
         vkResetCommandPool(_logical_device, _command_pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
     }
 
     void Device::create(VkPhysicalDevice physical_device) {
         _physical_device = physical_device;
+
+        ext_vkGetPhysicalDeviceFeatures2KHR = reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2KHR>(vkGetInstanceProcAddr(_instance->instance(), "vkGetPhysicalDeviceFeatures2KHR"));
 
         populate_physical_device_props(physical_device);
 
@@ -118,5 +120,17 @@ namespace vulkan {
         }
 
 	    vkGetPhysicalDeviceMemoryProperties(_physical_device, &_memory_properties);
+        /* // crashes irregularly on moltenvk
+        _16bit_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+        _8bit_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR;
+        _8bit_features.pNext = &_16bit_features;
+        _physical_features.pNext = &_8bit_features;
+        _physical_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        if (ext_vkGetPhysicalDeviceFeatures2KHR) {
+	        ext_vkGetPhysicalDeviceFeatures2KHR(_physical_device, &_physical_features);
+        } else {
+            std::cout << "Warning: could not run \"vkGetPhysicalDeviceFeatures2KHR\"" << std::endl;
+        }
+        */
     }
 }

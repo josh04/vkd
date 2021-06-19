@@ -4,7 +4,7 @@
 #include <vector>
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class DescriptorLayout {
 	public:
 		DescriptorLayout(std::shared_ptr<Device> device) : _device(device) {}

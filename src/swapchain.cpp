@@ -8,7 +8,7 @@
 #include <sstream>
 #include "imgui/imgui.h"
 
-namespace vulkan {
+namespace vkd {
 
     swapchain::swapchain(std::shared_ptr<Instance> instance, 
                   std::shared_ptr<Device> device,

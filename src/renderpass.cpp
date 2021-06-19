@@ -4,7 +4,7 @@
 #include "vulkan.hpp"
 #include "renderpass.hpp"
 
-namespace vulkan {
+namespace vkd {
 
     void Renderpass::create(const VkFormat colour_format, const VkFormat& depth_format) {
         std::array<VkAttachmentDescription, 2> attachments = {};

@@ -5,7 +5,7 @@
 #include "sampler.hpp"
 #include "buffer.hpp"
 
-namespace vulkan {
+namespace vkd {
     void Image::create_image(VkFormat format, int32_t width, int32_t height, VkImageUsageFlags usage_flags) {
         _format = format;
         _width = width;

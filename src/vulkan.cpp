@@ -33,21 +33,21 @@
 #include "render/draw_ui.hpp"
 #include "render/draw_fullscreen.hpp"
 
-#include "ui/nodes.hpp"
-#include "ui/timeline.hpp"
+#include "graph/fake_node.hpp"
+
+#include "ui/main_ui.hpp"
 
 #include "glm/glm.hpp"
 
 #include <chrono>
 #include <random>
 
-namespace vulkan {
+namespace vkd {
 
     namespace {
         bool _enableValidation = false;
 
-	    std::unique_ptr<app_ui::NodeWindow> node_window = nullptr;
-	    std::shared_ptr<Timeline> timeline = nullptr;
+	    std::shared_ptr<MainUI> _ui = nullptr;
 
         std::vector<VkPhysicalDevice> _physicalDevices;
         std::vector<VkPhysicalDeviceProperties> _physicalDeviceProps;
@@ -84,8 +84,7 @@ namespace vulkan {
 
         vkDeviceWaitIdle(_device->logical_device());
 
-	    node_window = nullptr;
-        timeline = nullptr;
+	    _ui = nullptr;
 
         _draw_ui = nullptr;
 
@@ -111,6 +110,7 @@ namespace vulkan {
 
     }
 
+	Device& device() { return *_device; }
 	DrawUI& get_ui() { return *_draw_ui; }
 
     VkResult createInstance(bool enableValidation) {
@@ -137,7 +137,7 @@ namespace vulkan {
         _physicalDevices.resize(gpuCount);
         VkResult err = vkEnumeratePhysicalDevices(_instance->instance(), &gpuCount, _physicalDevices.data());
         if (err) {
-            throw std::runtime_error(std::string("Could not enumerate physical devices: \n") + vulkan::error_string(err));
+            throw std::runtime_error(std::string("Could not enumerate physical devices: \n") + vkd::error_string(err));
         }
 
         // GPU selection
@@ -218,26 +218,26 @@ namespace vulkan {
         _pipeline_cache->create();
         
         _draw_ui = std::make_shared<DrawUI>(_swapchain->count());
-        engine_node_init(_draw_ui);
+        engine_node_init(_draw_ui, "__ui");
         _draw_ui->init();
 
-    	node_window = std::make_unique<app_ui::NodeWindow>();
-    	timeline = std::make_shared<Timeline>();
+        _ui = std::make_unique<MainUI>();
     }
 
-    void engine_node_init(const std::shared_ptr<EngineNode>& node) {
+    void engine_node_init(const std::shared_ptr<EngineNode>& node, const std::string& param_hash_name) {
+        node->set_param_hash_name(param_hash_name);
         node->set_device(_device);
         node->set_pipeline_cache(_pipeline_cache);
         node->set_renderpass(_renderpass);
-        node->set_timeline(timeline);
+        //node->set_timeline(timeline);
     }
 
-    std::shared_ptr<vulkan::EngineNode> make(const std::string& name) {
+    std::shared_ptr<vkd::EngineNode> make(const std::string& node_type, const std::string& param_hash_name) {
         std::shared_ptr<EngineNode> ret = nullptr;
 
 
-        auto&& nodemap = vulkan::EngineNode::node_type_map();
-        auto search = nodemap.find(name);
+        auto&& nodemap = vkd::EngineNode::node_type_map();
+        auto search = nodemap.find(node_type);
         if (search != nodemap.end()) {
             ret = search->second.clone->clone();
         } else {
@@ -247,21 +247,21 @@ namespace vulkan {
         } else if (name == "write") {
             
         } else if (name == "triangles") {
-            ret = std::make_shared<vulkan::DrawTriangle>(_width/(float)_height);
+            ret = std::make_shared<vkd::DrawTriangle>(_width/(float)_height);
         } else if (name == "particles") {
-            ret = std::make_shared<vulkan::Particles>();
+            ret = std::make_shared<vkd::Particles>();
         } else if (name == "draw_particles") {
-            ret = std::make_shared<vulkan::DrawParticles>();
+            ret = std::make_shared<vkd::DrawParticles>();
         } else if (name == "history") {
             
         } else if (name == "sand") {
-            ret = std::make_shared<vulkan::Sand>(_width, _height);
+            ret = std::make_shared<vkd::Sand>(_width, _height);
         } else if (name == "draw") {
-            ret = std::make_shared<vulkan::DrawFullscreen>();
+            ret = std::make_shared<vkd::DrawFullscreen>();
         }*/
 
         if (ret) {
-            engine_node_init(ret);
+            engine_node_init(ret, param_hash_name);
             //ret->init();
         }
         return ret;
@@ -271,11 +271,8 @@ namespace vulkan {
         begin_command_buffer(buf);
         _renderpass->begin(buf, _framebuffers[index]->framebuffer(), _width, _height);
 
-        auto&& graph = node_window->graph();
-        for (auto&& node : graph) {
-            node->commands(buf, _width, _height);
-        }
-        
+        _ui->commands(buf, _width, _height);
+
         _draw_ui->commands(buf, _width, _height);
 
         _renderpass->end(buf);
@@ -288,9 +285,9 @@ namespace vulkan {
 		
         std::vector<VkSemaphore> wait_semaphores = {_present_complete};
         
-        auto&& graph = node_window->graph();
-        for (auto&& node : graph) {
-            auto sem = node->wait_prerender();
+        auto&& sems = _ui->semaphores();
+
+        for (auto&& sem : sems) {
             if (sem != VK_NULL_HANDLE) {
                 wait_semaphores.push_back(sem);
                 wait_stage_masks.push_back(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
@@ -312,14 +309,8 @@ namespace vulkan {
     }
 
 	void draw() {
-        auto&& graph = node_window->graph();
 
-        // TODO : more updates
-        for (auto&& node : graph) {
-            if (node != _draw_ui) {
-                node->update();
-            }
-        }
+        _ui->update();
 
         uint32_t current_buffer = _swapchain->next_image(_present_complete);
 
@@ -331,10 +322,7 @@ namespace vulkan {
             build_command_buffers(_command_buffers[current_buffer], current_buffer);
         }
 
-
-        for (auto&& node : graph) {
-            node->execute(VK_NULL_HANDLE);
-        }
+        _ui->execute();
         
         submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer]);
         
@@ -480,11 +468,20 @@ namespace vulkan {
                 strm2 << "\t" << ext << "\n";
             }
             
+            
             strm2 << "Colour format: " << format_to_string(_colour_format) << "\n";
             strm2 << "Depth format: " << format_to_string(_depth_format) << "\n";
 
             ImGui::Text("%s", strm2.str().c_str());
             i++;
+
+
+            if (ImGui::TreeNode("Feats")) {
+                ImGui::Text("%s", physical_device_features_string(_device->features()).c_str());
+                ImGui::Text("%s", physical_device_8bit_features_string(_device->ext_8bit_features()).c_str());
+                ImGui::Text("%s", physical_device_16bit_features_string(_device->ext_16bit_features()).c_str());
+                ImGui::TreePop();
+            }
 
 
             ImGui::TreePop();
@@ -494,14 +491,6 @@ namespace vulkan {
 
         ImGui::End();
 
-	    node_window->draw();
-
-        timeline->draw();
-
-        auto&& graph = node_window->graph();
-
-        for (auto&& node : graph) {
-            node->ui();
-        }
+        _ui->draw();
     }
 }

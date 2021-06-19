@@ -5,7 +5,7 @@
 #include "device.hpp"
 #include "vulkan.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Renderpass {
     public:
         Renderpass(std::shared_ptr<Device> device) : _device(device) {}

@@ -49,12 +49,13 @@ imguiDrawer::imguiDrawer(unsigned int width, unsigned int height, bool vulkan) :
     io.KeyMap[ImGuiKey_X] = SDL_SCANCODE_X;
     io.KeyMap[ImGuiKey_Y] = SDL_SCANCODE_Y;
     io.KeyMap[ImGuiKey_Z] = SDL_SCANCODE_Z;
-
+/*
     if (_vulkan) {
         io.RenderDrawListsFn = NULL;
     } else {
         io.RenderDrawListsFn = ImGui_ImplGlfwGL3_RenderDrawLists;
     }
+*/ // removed imgui 1.80
     // Alternatively you can set this to NULL and call ImGui::GetDrawData() after ImGui::Render() to get the same ImDrawData pointer.
 
     /*io.SetClipboardTextFn = ImGui_ImplGlfwGL3_SetClipboardText;

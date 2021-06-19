@@ -10,7 +10,7 @@
 #include "engine_node.hpp"
 #include "image_node.hpp"
 
-namespace vulkan {
+namespace vkd {
     class Kernel;
     class Sand : public EngineNode, public ImageNode {
     public:
@@ -30,7 +30,7 @@ namespace vulkan {
         void init() override;
         bool update() override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(VkSemaphore wait_semaphore) override;
+        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
 
         //Buffer& storage_buffer() { return *_compute_storage_buffer; }
         VkSemaphore wait_prerender() const override { return _compute_complete; }
