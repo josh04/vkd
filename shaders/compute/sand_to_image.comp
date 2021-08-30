@@ -18,7 +18,7 @@ void main()
     
     uvec4 inp = imageLoad(inputTex, coord);
 
-    vec4 outp = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    vec4 outp = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     
     if (inp.x == 1) {
         if (inp.y == 0) {

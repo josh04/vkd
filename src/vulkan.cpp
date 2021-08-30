@@ -1,5 +1,7 @@
 #include "vulkan.hpp"
 
+#include "TaskScheduler.h"
+
 #include "imgui/imgui.h"
 
 #include "vulkan/vulkan.h"
@@ -17,6 +19,7 @@
 #include <mutex>
 
 #include "device.hpp"
+#include "fence.hpp"
 #include "image.hpp"
 #include "renderpass.hpp"
 #include "framebuffer.hpp"
@@ -69,7 +72,7 @@ namespace vkd {
 
         VkSemaphore _present_complete;
         VkSemaphore _render_complete;
-        std::vector<VkFence> _command_buffer_complete;
+        std::vector<FencePtr> _command_buffer_complete;
 
         std::shared_ptr<Renderpass> _renderpass = nullptr;
         std::shared_ptr<PipelineCache> _pipeline_cache = nullptr;
@@ -78,6 +81,9 @@ namespace vkd {
 
         uint32_t _width = 0;
         uint32_t _height = 0;
+        std::unique_ptr<enki::TaskScheduler> _task_scheduler = nullptr;
+
+        FencePtr callback_fence = nullptr;
     }
 
     void shutdown() {
@@ -96,6 +102,8 @@ namespace vkd {
         //VkFence _fence;
         //std::vector<VkFence> _command_buffer_complete;
 
+        _command_buffer_complete.clear();
+
         _swapchain = nullptr;
         _surface = nullptr;
         _depth_image = nullptr;
@@ -103,11 +111,12 @@ namespace vkd {
 
         //VkSemaphore _present_complete;
         //VkSemaphore _render_complete;
+        callback_fence = nullptr;
 
         _device = nullptr;
         _instance = nullptr;
 
-
+        _task_scheduler = nullptr;
     }
 
 	Device& device() { return *_device; }
@@ -161,6 +170,10 @@ namespace vkd {
     }
 
     void init(SDL_Window * window, SDL_Renderer * renderer) {
+        
+        _task_scheduler = std::make_unique<enki::TaskScheduler>();
+        _task_scheduler->Initialize();
+
         createInstance(true);
         _device = std::make_shared<Device>(_instance);
         _device->create(_physicalDevices[0]);
@@ -211,7 +224,7 @@ namespace vkd {
         _render_complete = create_semaphore(_device->logical_device());
         _command_buffer_complete.resize(_swapchain->count());
         for (auto&& fence : _command_buffer_complete) {
-            fence = create_fence(_device->logical_device(), true);
+            fence = Fence::create(_device, true);
         }
 
         _pipeline_cache = std::make_shared<PipelineCache>(_device);
@@ -222,6 +235,9 @@ namespace vkd {
         _draw_ui->init();
 
         _ui = std::make_unique<MainUI>();
+        _ui->set_device(_device);
+
+        callback_fence = Fence::create(_device, false);
     }
 
     void engine_node_init(const std::shared_ptr<EngineNode>& node, const std::string& param_hash_name) {
@@ -229,6 +245,8 @@ namespace vkd {
         node->set_device(_device);
         node->set_pipeline_cache(_pipeline_cache);
         node->set_renderpass(_renderpass);
+
+        node->post_setup();
         //node->set_timeline(timeline);
     }
 
@@ -279,7 +297,7 @@ namespace vkd {
         end_command_buffer(buf);
     }
 
-    void submit_buffer(VkQueue queue, VkCommandBuffer buf, VkFence fence) {
+    void submit_buffer(VkQueue queue, VkCommandBuffer buf, Fence * fence) {
 		// Pipeline stage at which the queue submission will wait (via pWaitSemaphores)
 		std::vector<VkPipelineStageFlags> wait_stage_masks = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 		
@@ -305,8 +323,31 @@ namespace vkd {
 		submit_info.commandBufferCount = 1;                           // One command buffer
 
 		// Submit to the graphics queue passing a wait fence
-		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence));
+		VK_CHECK_RESULT_TIMEOUT(vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr));
+        submit_compute_buffer(queue, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, callback_fence.get());
     }
+
+    namespace {
+        std::unique_ptr<enki::TaskSet> _callback_task = nullptr;
+    }
+
+    void render_callback(uint32_t current_buffer) {
+        if (_callback_task) {
+            _task_scheduler->WaitforTask(_callback_task.get());
+        }
+        _callback_task = std::make_unique<enki::TaskSet>(1, [current_buffer]( enki::TaskSetPartition range, uint32_t threadnum) {
+            try {
+                callback_fence->wait();
+                callback_fence->reset();
+                _draw_ui->flush();
+            } catch (...) {
+
+            }
+        });
+
+        _task_scheduler->AddTaskSetToPipe(_callback_task.get());
+        //
+    } 
 
 	void draw() {
 
@@ -315,26 +356,27 @@ namespace vkd {
         uint32_t current_buffer = _swapchain->next_image(_present_complete);
 
 		// Use a fence to wait until the command buffer has finished execution before using it again
-		VK_CHECK_RESULT(vkWaitForFences(_device->logical_device(), 1, &_command_buffer_complete[current_buffer], VK_TRUE, UINT64_MAX));
-		VK_CHECK_RESULT(vkResetFences(_device->logical_device(), 1, &_command_buffer_complete[current_buffer]));
+        _command_buffer_complete[current_buffer]->wait();
+        _command_buffer_complete[current_buffer]->reset();
 
-        if (_draw_ui->update()) {
+        if (_draw_ui->update(ExecutionType::UI)) {
             build_command_buffers(_command_buffers[current_buffer], current_buffer);
         }
 
         _ui->execute();
         
-        submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer]);
+        submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer].get());
         
+        render_callback(current_buffer);
 
 		// Present the current buffer to the swap chain
 		// Pass the semaphore signaled by the command buffer submission from the submit info as the wait semaphore for swap chain presentation
 		// This ensures that the image is not presented to the windowing system until all commands have been submitted
 		_swapchain->present(_render_complete, current_buffer);
+
 	}
 
-    void ui() {
-
+    void ui(bool& quit) {
         ImGui::SetNextWindowPos(ImVec2(2, 20), ImGuiCond_Always );
         ImGui::SetNextWindowSize(ImVec2(100, 20), ImGuiCond_Always );
         ImGui::Begin("fps", nullptr, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
@@ -368,129 +410,131 @@ namespace vkd {
             return;
         }   
 
-        ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
-        ImGui::SetNextWindowPos(ImVec2(25, 45), ImGuiCond_Once );
-        ImGui::SetNextWindowSize(ImVec2(400, 500), ImGuiCond_Once );
-        ImGui::Begin("Vulkan");
+        if (_ui->vulkan_window_open()) {
+            ImGui::SetNextWindowCollapsed(false, ImGuiCond_Once);
+            ImGui::SetNextWindowPos(ImVec2(25, 45), ImGuiCond_Once );
+            ImGui::SetNextWindowSize(ImVec2(400, 500), ImGuiCond_Once );
+            ImGui::Begin("Vulkan", &_ui->vulkan_window_open());
 
-
-        if (ImGui::TreeNode("Supported Extensions")) {
-            std::stringstream strm;
-            for (auto&& ext : _instance->supported_instance_extensions()) {
-                strm << ext << "\n";
-            }
-            ImGui::Text("%s", strm.str().c_str());
-            ImGui::TreePop();
-        }
-        if (ImGui::TreeNode("Enabled Extensions")) {
-            std::stringstream strm;
-            for (auto&& ext : _instance->enabled_instance_extensions()) {
-                strm << ext << "\n";
-            }
-            ImGui::Text("%s", strm.str().c_str());
-            ImGui::TreePop();
-        }
-        if (ImGui::TreeNode("Instance Layers")) {
-            std::stringstream strm;
-            for (auto&& layer : _instance->instance_layer_properties()) {
-                strm << layer.layerName << ": " << layer.description << "\n";
-            }
-            ImGui::Text("%s", strm.str().c_str());
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Physical Devices")) {
-            int i = 0;
-            for (auto&& device : _physicalDeviceProps) {
+            if (ImGui::TreeNode("Supported Extensions")) {
                 std::stringstream strm;
-                auto&& feats = _physicalDeviceFeats[i];
-                auto&& memProps = _physicalDeviceMemProps[i];
-                strm << device.deviceName 
-                << " - Type: " << physical_device_to_string(device.deviceType)
-                << " - API: " << (device.apiVersion >> 22) << "." << ((device.apiVersion >> 12) & 0x3ff) << "." << (device.apiVersion & 0xfff) << "\n";
+                for (auto&& ext : _instance->supported_instance_extensions()) {
+                    strm << ext << "\n";
+                }
+                ImGui::Text("%s", strm.str().c_str());
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Enabled Extensions")) {
+                std::stringstream strm;
+                for (auto&& ext : _instance->enabled_instance_extensions()) {
+                    strm << ext << "\n";
+                }
+                ImGui::Text("%s", strm.str().c_str());
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Instance Layers")) {
+                std::stringstream strm;
+                for (auto&& layer : _instance->instance_layer_properties()) {
+                    strm << layer.layerName << ": " << layer.description << "\n";
+                }
+                ImGui::Text("%s", strm.str().c_str());
+                ImGui::TreePop();
+            }
+
+            if (ImGui::TreeNode("Physical Devices")) {
+                int i = 0;
+                for (auto&& device : _physicalDeviceProps) {
+                    std::stringstream strm;
+                    auto&& feats = _physicalDeviceFeats[i];
+                    auto&& memProps = _physicalDeviceMemProps[i];
+                    strm << device.deviceName 
+                    << " - Type: " << physical_device_to_string(device.deviceType)
+                    << " - API: " << (device.apiVersion >> 22) << "." << ((device.apiVersion >> 12) & 0x3ff) << "." << (device.apiVersion & 0xfff) << "\n";
+
+                    ImGui::Text("%s", strm.str().c_str());
+
+                    if (ImGui::TreeNode("Feats")) {
+                        ImGui::Text("%s", physical_device_features_string(feats).c_str());
+                        ImGui::TreePop();
+                    }
+
+                    std::stringstream strm2;
+                    strm2 << "Heaps: " << memProps.memoryHeapCount << " Types: " << memProps.memoryTypeCount << "\n";
+                    for (int j = 0; j < memProps.memoryHeapCount; ++j) {
+                        strm2 << "Heap " << j << " - size: " << memProps.memoryHeaps[j].size 
+                            << "\n flags: \n" << memory_heap_flags_to_string(memProps.memoryHeaps[j].flags);
+                    }
+
+                    for (int j = 0; j < memProps.memoryTypeCount; ++j) {
+                        strm2 << "Type " << j 
+                            << " - heap index: " << memProps.memoryTypes[j].heapIndex 
+                            << "\n flags: \n" << memory_property_flags_to_string(memProps.memoryTypes[j].propertyFlags);
+                    }
+                    ImGui::Text("%s", strm2.str().c_str());
+                    
+                    i++;
+                }
+
+                ImGui::TreePop();
+            }
+
+            if (ImGui::TreeNode("Logical Device Props")) {
+                
+                int i = 0;
+                std::stringstream strm;
+
+                strm << "Device " << i << "\n\t Queue count: " 
+                    << _device->queue_family_props()[i].queueCount
+                    << "\n\t minImageTransferGranularity: " << _device->queue_family_props()[i].minImageTransferGranularity.width 
+                    << "/" << _device->queue_family_props()[i].minImageTransferGranularity.height << "/" << _device->queue_family_props()[i].minImageTransferGranularity.depth
+                    << "\n\t timestampValidBits: " << _device->queue_family_props()[i].timestampValidBits
+                    << "\n\t queueFlags: \n" << queue_flags_to_string(_device->queue_family_props()[i].queueFlags) << "\n";
+
 
                 ImGui::Text("%s", strm.str().c_str());
+                if (ImGui::TreeNode("Extensions")) {
+                    std::stringstream strm3;
+                    for (auto&& ext : _device->device_extension_props()) {
+                        strm3 << ext.extensionName << ": " << ext.specVersion << "\n";
+                    }
 
-                if (ImGui::TreeNode("Feats")) {
-                    ImGui::Text("%s", physical_device_features_string(feats).c_str());
+                    ImGui::Text("%s", strm3.str().c_str());
                     ImGui::TreePop();
                 }
 
                 std::stringstream strm2;
-                strm2 << "Heaps: " << memProps.memoryHeapCount << " Types: " << memProps.memoryTypeCount << "\n";
-                for (int j = 0; j < memProps.memoryHeapCount; ++j) {
-                    strm2 << "Heap " << j << " - size: " << memProps.memoryHeaps[j].size 
-                        << "\n flags: \n" << memory_heap_flags_to_string(memProps.memoryHeaps[j].flags);
+                strm2 << "Created device: " << (_device->logical_device() ?  "true" : "false") << "\n";
+                strm2 << "Created queue: " << (_device->queue() ?  "true" : "false") << "\n";
+                strm2 << "Enabled extensions:" << "\n";
+                for (auto&& ext : _device->device_extensions_enabled()) {
+                    strm2 << "\t" << ext << "\n";
                 }
-
-                for (int j = 0; j < memProps.memoryTypeCount; ++j) {
-                    strm2 << "Type " << j 
-                        << " - heap index: " << memProps.memoryTypes[j].heapIndex 
-                        << "\n flags: \n" << memory_property_flags_to_string(memProps.memoryTypes[j].propertyFlags);
-                }
-                ImGui::Text("%s", strm2.str().c_str());
                 
+                
+                strm2 << "Colour format: " << format_to_string(_colour_format) << "\n";
+                strm2 << "Depth format: " << format_to_string(_depth_format) << "\n";
+
+                ImGui::Text("%s", strm2.str().c_str());
                 i++;
-            }
-
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Logical Device Props")) {
-            
-            int i = 0;
-            std::stringstream strm;
-
-            strm << "Device " << i << "\n\t Queue count: " 
-                << _device->queue_family_props()[i].queueCount
-                << "\n\t minImageTransferGranularity: " << _device->queue_family_props()[i].minImageTransferGranularity.width 
-                << "/" << _device->queue_family_props()[i].minImageTransferGranularity.height << "/" << _device->queue_family_props()[i].minImageTransferGranularity.depth
-                << "\n\t timestampValidBits: " << _device->queue_family_props()[i].timestampValidBits
-                << "\n\t queueFlags: \n" << queue_flags_to_string(_device->queue_family_props()[i].queueFlags) << "\n";
 
 
-            ImGui::Text("%s", strm.str().c_str());
-            if (ImGui::TreeNode("Extensions")) {
-                std::stringstream strm3;
-                for (auto&& ext : _device->device_extension_props()) {
-                    strm3 << ext.extensionName << ": " << ext.specVersion << "\n";
+                if (ImGui::TreeNode("Feats")) {
+                    ImGui::Text("%s", physical_device_features_string(_device->features()).c_str());
+                    ImGui::Text("%s", physical_device_8bit_features_string(_device->ext_8bit_features()).c_str());
+                    ImGui::Text("%s", physical_device_16bit_features_string(_device->ext_16bit_features()).c_str());
+                    ImGui::TreePop();
                 }
 
-                ImGui::Text("%s", strm3.str().c_str());
+
                 ImGui::TreePop();
             }
 
-            std::stringstream strm2;
-            strm2 << "Created device: " << (_device->logical_device() ?  "true" : "false") << "\n";
-            strm2 << "Created queue: " << (_device->queue() ?  "true" : "false") << "\n";
-            strm2 << "Enabled extensions:" << "\n";
-            for (auto&& ext : _device->device_extensions_enabled()) {
-                strm2 << "\t" << ext << "\n";
-            }
-            
-            
-            strm2 << "Colour format: " << format_to_string(_colour_format) << "\n";
-            strm2 << "Depth format: " << format_to_string(_depth_format) << "\n";
+            _swapchain->ui();
 
-            ImGui::Text("%s", strm2.str().c_str());
-            i++;
-
-
-            if (ImGui::TreeNode("Feats")) {
-                ImGui::Text("%s", physical_device_features_string(_device->features()).c_str());
-                ImGui::Text("%s", physical_device_8bit_features_string(_device->ext_8bit_features()).c_str());
-                ImGui::Text("%s", physical_device_16bit_features_string(_device->ext_16bit_features()).c_str());
-                ImGui::TreePop();
-            }
-
-
-            ImGui::TreePop();
+            ImGui::End();
         }
-
-        _swapchain->ui();
-
-        ImGui::End();
 
         _ui->draw();
+        quit = quit || _ui->has_quit();
     }
 }

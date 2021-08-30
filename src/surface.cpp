@@ -3,7 +3,7 @@
 #include "vulkan.hpp"
 #include "device.hpp"
 
-#ifndef __APPLE__
+#if defined(unix) && !defined(__APPLE__)
 #include <X11/Xlib-xcb.h>
 #endif
 
@@ -30,13 +30,25 @@ namespace vkd {
         surfaceCreateInfo.connection = XGetXCBConnection(wminfo.info.x11.display);
         surfaceCreateInfo.window = wminfo.info.x11.window;
         VK_CHECK_RESULT(vkCreateXcbSurfaceKHR(_instance->instance(), &surfaceCreateInfo, nullptr, &_surface));
-#else
+#elif defined(__APPLE__)
         VkMacOSSurfaceCreateInfoMVK surfaceCreateInfo = {};
         memset(&surfaceCreateInfo, 0, sizeof(VkMacOSSurfaceCreateInfoMVK));
         surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK;
         const void *swapchain = SDL_RenderGetMetalLayer(renderer);
         surfaceCreateInfo.pView = swapchain;
         VK_CHECK_RESULT(vkCreateMacOSSurfaceMVK(_instance->instance(), &surfaceCreateInfo, nullptr, &_surface));
+#else if defined(_WIN32)
+        // put here
+        VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {};
+        memset(&surfaceCreateInfo, 0, sizeof(VkWin32SurfaceCreateInfoKHR));
+        surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+                
+        HWND platformWindow = wminfo.info.win.window;
+        HINSTANCE platformHandle = wminfo.info.win.hinstance;
+
+        surfaceCreateInfo.hinstance = (HINSTANCE)platformHandle;
+        surfaceCreateInfo.hwnd = (HWND)platformWindow;
+        VK_CHECK_RESULT(vkCreateWin32SurfaceKHR(_instance->instance(), &surfaceCreateInfo, nullptr, &_surface));
 #endif
 
 

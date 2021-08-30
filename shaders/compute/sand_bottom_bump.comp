@@ -5,6 +5,7 @@
 // Binding 0 : Position storage buffer
 layout(binding = 0, rgba32ui) uniform uimage2D inputTex;
 layout(binding = 1, rgba32ui) uniform uimage2D outputTex;
+layout(binding = 2, rgba32ui) uniform uimage2D outputTex2;
 
 layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
@@ -19,6 +20,7 @@ void main()
     uvec4 inp = imageLoad(inputTex, coord);
     
     imageStore(outputTex, coord, inp);
+    imageStore(outputTex2, coord, inp);
 }
 
 

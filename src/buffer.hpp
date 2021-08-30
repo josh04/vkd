@@ -49,6 +49,28 @@ namespace vkd {
     private:
 
     };
+
+    class AutoMapStagingBuffer : public StagingBuffer {
+    public:
+        AutoMapStagingBuffer(std::shared_ptr<Device> device, size_t size) : StagingBuffer(device) {
+            create(size, 0);
+            _mapped = map();
+        }
+        
+        ~AutoMapStagingBuffer() {
+            unmap();
+        }
+
+        static auto make(const std::shared_ptr<Device>& device, size_t size) {
+            auto buf = std::make_shared<AutoMapStagingBuffer>(device, size);
+            return buf;
+        }
+
+        void * get() const { return _mapped; }
+    private:
+        void * _mapped = nullptr;
+    };
+
     class VertexBuffer : public Buffer {
     public:
         VertexBuffer(std::shared_ptr<Device> device) : Buffer(device) {}
@@ -80,6 +102,12 @@ namespace vkd {
     public:
         StorageBuffer(std::shared_ptr<Device> device) : StagingBuffer(device) {}
         ~StorageBuffer() = default;
+
+        static auto make(const std::shared_ptr<Device>& device, size_t size) {
+            auto buf = std::make_shared<StorageBuffer>(device);
+            buf->create(size);
+            return buf;
+        }
 
         void create(size_t size, VkBufferUsageFlags extra_flags = 0);
     private:

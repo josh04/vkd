@@ -3,6 +3,7 @@
 #include <ktx.h>
 #include <ktxvulkan.h>
 
+#include "image.hpp"
 #include "command_buffer.hpp"
 
 namespace vkd {

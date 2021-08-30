@@ -5,8 +5,21 @@
 #include "shader.hpp"
 #include "image.hpp"
 #include "buffer.hpp"
+#include "command_buffer.hpp"
 
 namespace vkd {
+    std::shared_ptr<DescriptorPool> Kernel::make_pool() {
+        auto  desc_pool = std::make_shared<DescriptorPool>(_device);
+        auto counts = _shader->descriptor_counts();
+        desc_pool->add_uniform_buffer(counts.uniform_buffers);
+        desc_pool->add_storage_buffer(counts.storage_buffers);
+        desc_pool->add_combined_image_sampler(counts.image_samplers);
+        desc_pool->add_storage_image(counts.storage_images);
+        desc_pool->create(1);
+
+        return desc_pool;
+    }
+
     void Kernel::init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes) {
         memset(&_constants, 0, sizeof(ExecutionConstants));
         _pipeline_cache = std::make_shared<PipelineCache>(_device);
@@ -15,14 +28,6 @@ namespace vkd {
 		_shader = std::make_unique<ComputeShader>(_device);
         _shader->create(path, func_name);
 
-        _desc_pool = std::make_shared<DescriptorPool>(_device);
-        auto counts = _shader->descriptor_counts();
-        _desc_pool->add_uniform_buffer(counts.uniform_buffers);
-        _desc_pool->add_storage_buffer(counts.storage_buffers);
-        _desc_pool->add_combined_image_sampler(counts.image_samplers);
-        _desc_pool->add_storage_image(counts.storage_images);
-        _desc_pool->create(1);
-        
         _desc_set_layout = _shader->desc_set_layout();
 
         for (auto&& constant : _shader->push_constants()) {
@@ -63,7 +68,7 @@ namespace vkd {
                 param = make_param<ParameterType::p_uvec4>(param_hash_full, pair.name, pair.offset);
                 break;
             case ParameterType::p_string:
-                throw std::runtime_error("can't pass string param to kernel");
+                throw GraphException("can't pass string param to kernel");
                 break;
             case ParameterType::p_frame:
                 param = make_param<ParameterType::p_frame>(param_hash_full, pair.name, pair.offset);
@@ -80,7 +85,7 @@ namespace vkd {
 
     void Kernel::_create_pipeline(PartialPipeline& pipeline, std::array<int32_t, 3> local_sizes) {
         if (local_sizes[0] < 1 || local_sizes[1] < 1 || local_sizes[2] < 1) {
-            throw std::runtime_error("Bad pipeline local size");
+            throw GraphException("Bad pipeline local size");
         }
 
         pipeline.pipeline = std::make_shared<ComputePipeline>(_device, _pipeline_cache);
@@ -111,7 +116,8 @@ namespace vkd {
 
     void Kernel::update() {
         if (_args_changed) {
-            _desc_set = std::make_shared<DescriptorSet>(_device, _desc_set_layout, _desc_pool);
+            auto pool = make_pool();
+            _desc_set = std::make_shared<DescriptorSet>(_device, _desc_set_layout, pool);
             for (auto&& arg : _args) {
                 if (arg.second.buffer) {
                     _desc_set->add_buffer(*arg.second.buffer);
@@ -141,6 +147,11 @@ namespace vkd {
     void debug_print(std::string name, int32_t g_x, int32_t g_y, int32_t g_z) {
         if constexpr (debug) { std::cout << "dispatching " << name << " x: " << g_x << " y: " << g_y << " z: " << g_z
             << " offsets x: " << last_offset.x << " offsets y: " << last_offset.y << " z: " << last_offset.z << std::endl; }
+    }
+
+	void Kernel::dispatch(CommandBuffer& cbuf, int32_t global_x, int32_t global_y, int32_t global_z) {
+        cbuf.add_desc_set(_desc_set);
+        dispatch(cbuf.get(), global_x, global_y, global_z);
     }
 
 	void Kernel::dispatch(VkCommandBuffer buf, int32_t global_x, int32_t global_y, int32_t global_z) {
@@ -223,8 +234,8 @@ namespace vkd {
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             0,
             0, nullptr,
-            membar.size(), membar.data(),
-            imagebar.size(), imagebar.data());
+            (uint32_t)membar.size(), membar.data(),
+            (uint32_t)imagebar.size(), imagebar.data());
 	}
 
     void Kernel::_dispatch_overflow(VkCommandBuffer buf, std::array<int32_t, 3> size, std::array<int32_t, 3> count) {

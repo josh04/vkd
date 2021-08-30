@@ -6,6 +6,16 @@
 #include "buffer.hpp"
 
 namespace vkd {
+    Image::~Image() {
+        if (_ui_desc_set != VK_NULL_HANDLE) {
+            ImGui_ImplVulkan_RemoveTexture(_ui_desc_set);
+        }
+        _ui_desc_set = VK_NULL_HANDLE;
+
+        vkDestroySampler(_device->logical_device(), _sampler, nullptr);
+        vkDestroyImageView(_device->logical_device(), _view, nullptr);
+    }
+
     void Image::create_image(VkFormat format, int32_t width, int32_t height, VkImageUsageFlags usage_flags) {
         _format = format;
         _width = width;

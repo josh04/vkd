@@ -15,6 +15,19 @@ namespace vkd {
 
         if (ImGui::BeginListBox("##items", {-FLT_MIN, -30})) {
             int i = 0;
+            if (ImGui::Selectable("(empty)", _selected == i)) {
+                if (_selected == i) {
+                    _selected = -1;
+                } else {
+                    _selected = i;
+                }
+            }
+            if (ImGui::BeginDragDropSource())
+            {
+                ImGui::SetDragDropPayload("BIN_EMPTY", nullptr, 0);
+                ImGui::EndDragDropSource();
+            }
+            i++;
             for (auto&& item : _entries) {
                 if (ImGui::Selectable(item.path.c_str(), _selected == i)) {
                     if (_selected == i) {

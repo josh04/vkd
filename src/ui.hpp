@@ -4,7 +4,9 @@
 #include <string>
 #include "imgui/imgui.h"
 
-class imguiDrawer {
+#include "vkd_dll.h"
+
+class VKDEXPORT imguiDrawer {
 public:
     imguiDrawer(unsigned int width, unsigned int height, bool vulkan);
 

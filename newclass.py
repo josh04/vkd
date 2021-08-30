@@ -9,7 +9,7 @@ def write_header(path, classname):
         
 #include <memory>
 
-namespace vulkan {
+namespace vkd {
     class """ + classname + """ {
     public:
         """ + classname + """() = default;
@@ -30,7 +30,7 @@ def write_impl(path, classname):
         header = open(filename, 'w')
         header.write("""#include \"""" + classname.lower() + """.hpp"
 
-namespace vulkan {
+namespace vkd {
     
 }""")
         print("wrote impl " + filename)

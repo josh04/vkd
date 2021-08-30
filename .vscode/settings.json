@@ -88,6 +88,27 @@
         "queue": "cpp",
         "stack": "cpp",
         "strstream": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "__cxx_version": "cpp",
+        "xtree": "cpp",
+        "xhash": "cpp",
+        "xstring": "cpp",
+        "xutility": "cpp",
+        "charconv": "cpp",
+        "concepts": "cpp",
+        "format": "cpp",
+        "stop_token": "cpp",
+        "xfacet": "cpp",
+        "xiosbase": "cpp",
+        "xlocale": "cpp",
+        "xlocbuf": "cpp",
+        "xlocinfo": "cpp",
+        "xlocmes": "cpp",
+        "xlocmon": "cpp",
+        "xlocnum": "cpp",
+        "xloctime": "cpp",
+        "xmemory": "cpp",
+        "xstddef": "cpp",
+        "xtr1common": "cpp"
     }
 }

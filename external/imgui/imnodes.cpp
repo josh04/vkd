@@ -2377,6 +2377,13 @@ void PushColorStyle(ColorStyle item, unsigned int color)
     g.style.colors[item] = color;
 }
 
+void PopColorStyle(const int count) 
+{
+    for (int i = 0; i < count; ++i) {
+        PopColorStyle();
+    }
+}
+
 void PopColorStyle()
 {
     assert(g.color_modifier_stack.size() > 0);
@@ -2448,6 +2455,14 @@ void PushStyleVar(const StyleVar item, const float value)
     g.style_modifier_stack.push_back(StyleElement(style_var, item));
     style_var = value;
 }
+
+void PopStyleVar(const int count) 
+{
+    for (int i = 0; i < count; ++i) {
+        PopStyleVar();
+    }
+}
+
 
 void PopStyleVar()
 {

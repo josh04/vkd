@@ -9,6 +9,8 @@
 #include "shader.hpp"
 #include "compute_pipeline.hpp"
 
+#include "graph_exception.hpp"
+
 #include <glm/glm.hpp>
 
 namespace vkd {
@@ -20,6 +22,7 @@ namespace vkd {
     class DescriptorPool;
     class DescriptorLayout;
     class ComputeShader;
+    class CommandBuffer;
 
     class Kernel {
     public:
@@ -29,6 +32,8 @@ namespace vkd {
         Kernel(const Kernel&) = delete;
 
         void init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = {16, 16, 1});
+
+        std::shared_ptr<DescriptorPool> make_pool();
 
         std::string get_push_arg_type(std::string name);
         
@@ -41,12 +46,23 @@ namespace vkd {
         }
 
         template<typename T> 
+        bool set_push_arg_by_name(std::string name, T val) {
+            auto search = _params.find(name);
+            if (search == _params.end()) {
+                return false;
+            }
+            search->second->as<T>().set_force(val);
+
+            return true;
+        }
+
+        template<typename T> 
         bool set_push_arg_by_name(VkCommandBuffer buf, std::string name, T val) {
             auto search = _params.find(name);
             if (search == _params.end()) {
                 return false;
             }
-            search->second->as<T>().set(val);
+            search->second->as<T>().set_force(val);
 
             if (buf != VK_NULL_HANDLE) {
                 set_push_arg(buf, *search->second);
@@ -64,10 +80,10 @@ namespace vkd {
             }
 
             if (size + offset > _push_constant_size) {
-                throw std::runtime_error("Param out of range for push constant");
+                throw GraphException("Param out of range for push constant");
             }
             
-            vkCmdPushConstants(buf, _full_pipeline.pipeline->layout()->get(), VK_SHADER_STAGE_COMPUTE_BIT, offset, size, data);
+            vkCmdPushConstants(buf, _full_pipeline.pipeline->layout()->get(), VK_SHADER_STAGE_COMPUTE_BIT, (uint32_t)offset, (uint32_t)size, data);
         }
 
         void set_arg(int32_t index, std::shared_ptr<Buffer> buffer);
@@ -85,6 +101,7 @@ namespace vkd {
         const auto& public_params() const { return _public_params; }
         auto name() const { return _shader->path(); }
 
+	    void dispatch(CommandBuffer& cbuf, int32_t global_x, int32_t global_y =1 , int32_t global_z = 1);
 	    void dispatch(VkCommandBuffer buf, int32_t global_x, int32_t global_y =1 , int32_t global_z = 1);
     private:
         struct PartialPipeline {
@@ -119,7 +136,6 @@ namespace vkd {
 
         std::shared_ptr<DescriptorLayout> _desc_set_layout = nullptr;
         std::shared_ptr<DescriptorSet> _desc_set = nullptr;
-        std::shared_ptr<DescriptorPool> _desc_pool = nullptr;
 
         struct Arg {
             std::shared_ptr<Buffer> buffer;

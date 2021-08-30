@@ -36,6 +36,10 @@ namespace vkd {
                 ui.add_node_graph(to_add);
                 graph_changed = true;
             }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("BIN_EMPTY")) {
+                ui.add_node_graph(to_add);
+                graph_changed = true;
+            }
             ImGui::EndDragDropTarget();
         }
 
@@ -49,10 +53,17 @@ namespace vkd {
         int32_t count = 0;
         for (auto&& line : _sequencer->lines) {
             count = std::max(line->frame_count, count);
+            count = std::max(line->blocks[0].end, count);
         }
         _sequencer->frame_max = count;
 
+        graph_changed = graph_changed || _sequencer->edited;
+        _sequencer->edited = false;
+
         ImGui::End();
 
-    }   
+    }
+    void Timeline::increment() { 
+        _current_frame.index = std::clamp(_current_frame.index + 1, (int64_t)0, _sequencer->frame_max);
+    }
 }

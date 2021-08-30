@@ -37,27 +37,29 @@ namespace vkd {
        half_window->as<int>().max(200);
 
         _compute_complete = create_semaphore(_device->logical_device());
+        
+        auto image = _image_node->get_output_image();
+        _size = image->dim();
+
+        _image = std::make_shared<vkd::Image>(_device);
+        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+        _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
+
+        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+        _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
+
+        _blur->set_arg(0, image);
+        _blur->set_arg(1, _image);
+        _blur->update();
     }
 
-    bool Bilateral::update() {
-        if (_size == glm::uvec2{0,0}) {
-            auto image = _image_node->get_output_image();
-            _size = image->dim();
+    void Bilateral::post_init()
+    {
+    }
 
-            _image = std::make_shared<vkd::Image>(_device);
-            _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
-            _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
-
-            auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
-            _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-            vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
-
-            _blur->set_arg(0, image);
-            _blur->set_arg(1, _image);
-            _blur->update();
-        }
-
+    bool Bilateral::update(ExecutionType type) {
         bool update = false;
         for (auto&& pmap : _params) {
             for (auto&& el : pmap.second) {
@@ -76,7 +78,7 @@ namespace vkd {
         return update;
     }
 
-    void Bilateral::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void Bilateral::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
         submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

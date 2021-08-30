@@ -2,6 +2,7 @@
         
 #include <memory>
 #include <string>
+#include <algorithm>
 
 #include "vulkan.hpp"
 #include "engine_node.hpp"
@@ -36,10 +37,13 @@ namespace vkd {
 
         void scrub(const Frame& frame);
         
+        void post_setup() override;
+
         void init() override;
-        bool update() override;
+        void post_init() override;
+        bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
+        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
 
         VkSemaphore wait_prerender() const override { return _compute_complete; }
         auto compute_complete() const { return _compute_complete; }
@@ -49,7 +53,6 @@ namespace vkd {
         //std::string _path = "test.mp4";
 
         int32_t _width = 1, _height = 1;
-        uint32_t _frame_count = 0;
 
         std::shared_ptr<StagingBuffer> _staging_buffer = nullptr;
         uint32_t * _staging_buffer_ptr = nullptr;
@@ -70,13 +73,30 @@ namespace vkd {
         std::shared_ptr<ParameterInterface> _frame_param = nullptr;
         
         struct BlockEditParams {
-            BlockEditParams(ShaderParamMap& map);
+            BlockEditParams() {}
+            BlockEditParams(ShaderParamMap& map, std::string hash);
+
+            Frame translate(const Frame& frame, bool clamp) {
+                auto fin_frame = frame;
+                Frame crs = content_relative_start->as<Frame>().get();
+                int64_t tot = total_frame_count->as<int>().get();
+
+                if (clamp) {
+                    fin_frame.index = std::clamp(frame.index + crs.index, (int64_t)0, tot);
+                } else {
+                    fin_frame.index = std::max(frame.index + crs.index, (int64_t)0);
+                }
+                return fin_frame;
+            }
+            std::shared_ptr<ParameterInterface> total_frame_count = nullptr;
             std::shared_ptr<ParameterInterface> frame_start_block = nullptr;
             std::shared_ptr<ParameterInterface> frame_end_block = nullptr;
             std::shared_ptr<ParameterInterface> content_relative_start = nullptr;
         };
 
         BlockEditParams _block;
+
+        int64_t _frame_count = 0; // may not be available.
 
         int64_t _target_pts = 0;
 
@@ -85,6 +105,9 @@ namespace vkd {
         bool _force_scrub = true;
         int64_t _current_frame = -1;
 
-        VkFence _last_fence = VK_NULL_HANDLE;
+        Fence * _last_fence = nullptr;
+
+        size_t _buffer_size = 0;
+        bool _blanked = false;
     };
 }

@@ -91,6 +91,10 @@ namespace vkd {
         _pipeline->create(_desc_set_layout->get(), std::move(shader_stages), std::move(vertex_input));
     }
 
+    void DrawTriangle::post_init()
+    {
+    }
+
     void DrawTriangle::commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {
         viewport_and_scissor(buf, width, height, width, height);
         _pipeline->bind(buf, _desc_set->get());
@@ -107,7 +111,7 @@ namespace vkd {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawTriangle::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void DrawTriangle::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
 
     }
 }

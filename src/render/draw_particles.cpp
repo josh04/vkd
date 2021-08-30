@@ -10,6 +10,7 @@
 #include "compute/particles.hpp"
 #include "vertex_input.hpp"
 #include "viewport_and_scissor.hpp"
+#include "device.hpp"
 
 namespace vkd {
     REGISTER_NODE("draw_particles", "draw particles", DrawParticles);
@@ -95,6 +96,10 @@ namespace vkd {
         _particle_pipeline->create(pl, std::move(shader_stages), std::move(vertex_input));
     }
 
+    void DrawParticles::post_init()
+    {
+    }
+
     void DrawParticles::commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {
         viewport_and_scissor(buf, width, height, width, height);
         _particle_pipeline->bind(buf, _particle_desc_set->get());
@@ -109,7 +114,7 @@ namespace vkd {
         vkCmdDraw(buf, PARTICLE_COUNT, 1, 0, 0);
     }
 
-    void DrawParticles::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void DrawParticles::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
 
     }
 }

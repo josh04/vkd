@@ -68,6 +68,11 @@ namespace vkd {
             return "";
         }
 
+        void BeginEdit(int /*index*/) override {}
+        void EndEdit() override { edited = true; }
+
+        bool edited = false;
+
         std::vector<std::shared_ptr<SequencerLine>> lines;
 
         int p1 = 0;
@@ -76,7 +81,7 @@ namespace vkd {
         int selected_entry = 0;
         int first_frame = 0;
 
-        int frame_max = 100;
+        int64_t frame_max = 100;
 
         template <class Archive>
         void serialize(Archive & ar, const uint32_t version) {
@@ -109,7 +114,8 @@ namespace vkd {
 
         bool play() const { return _play; }
         auto current_frame() const { return _current_frame; }
-        void increment() { _current_frame.index++; }
+        void scrub(int new_frame) { _current_frame = {new_frame}; }
+        void increment();
 
         template <class Archive>
         void serialize(Archive & ar, const uint32_t version) {

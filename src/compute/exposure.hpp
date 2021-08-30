@@ -20,23 +20,23 @@ namespace vkd {
 
         void inputs(const std::vector<std::shared_ptr<EngineNode>>& in) override {
             if (in.size() < 1) {
-                throw std::runtime_error("Input required");
+                throw GraphException("Input required");
             }
             auto conv = std::dynamic_pointer_cast<ImageNode>(in[0]);
             if (!conv) {
-                throw std::runtime_error("Invalid input");
+                throw GraphException("Invalid input");
             }
             _image_node = conv;
         }
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<Exposure>(); }
 
         void init() override;
-        bool update() override;
+        void post_init() override;
+        bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
+        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
 
         VkSemaphore wait_prerender() const override { return _compute_complete; }
-        auto compute_complete() const { return _compute_complete; }
         std::shared_ptr<Image> get_output_image() const override { return _image; }
         float get_output_ratio() const override { return _size[0] / (float)_size[1]; }
     private:

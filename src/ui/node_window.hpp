@@ -24,6 +24,10 @@
 #include "render/draw_fullscreen.hpp"
 #include "bin.hpp"
 
+namespace imnodes {
+    struct EditorContext;
+}
+
 namespace vkd {
     class EngineNode;
     class ParameterInterface;
@@ -32,18 +36,20 @@ namespace vkd {
     class Graph;
     class DrawFullscreen;
     class Timeline;
-    class SequencerLine;
+    struct SequencerLine;
 }
 
 namespace vkd {
     class NodeWindow {
     public:
         NodeWindow();
+        NodeWindow(int32_t id);
         ~NodeWindow();
         NodeWindow(NodeWindow&&) = delete;
         NodeWindow(const NodeWindow&) = delete;
 
-        void add_input(const Bin::Entry& entry);
+        void initial_input(const Bin::Entry& entry);
+        void sequencer_size_to_loaded_content();
         void draw(bool& updated);
 
         struct Node {
@@ -52,6 +58,8 @@ namespace vkd {
             std::set<int32_t> inputs;
             std::set<int32_t> outputs;
             std::vector<int32_t> links;
+
+            bool extendable_inputs;
 
             std::shared_ptr<vkd::FakeNode> node;
 
@@ -87,20 +95,25 @@ namespace vkd {
 
         const auto& sequencer_line() const { return _sequencer_line; }
     private:
+        imnodes::EditorContext * _imnodes_context = nullptr;
+        std::string _window_name = "node window ";
+
+        int32_t _id = -1;
 
         //template <class N> void add_node_(Node& node);
         int32_t _add_node(std::string name);
         int32_t _add_link(int32_t start, int32_t end);
+        void _remove_link(int32_t link);
 
-        void _ui_for_param(const std::shared_ptr<vkd::ParameterInterface>& param);
+        bool _ui_for_param(const std::shared_ptr<vkd::ParameterInterface>& param);
 
         std::set<int32_t> _pins(int32_t count);
         int32_t next_pin_();
 
         // begin saved elements
-        int32_t _next_node = 0;
-        int32_t _next_pin = 0;
-        int32_t _next_link = 0;
+        static int32_t _next_node;
+        static int32_t _next_pin;
+        static int32_t _next_link;
         std::map<int32_t, Node> _nodes;
         std::map<int32_t, int32_t> _pin_to_node;
         std::map<int32_t, Link> _links;
@@ -120,9 +133,12 @@ namespace vkd {
         std::weak_ptr<vkd::ParameterInterface> _file_dialog_param;
 
         std::shared_ptr<SequencerLine> _sequencer_line = nullptr;
+
     };
 
     struct SerialiseGraph {
+        int _id;
+        std::string _window_name;
         
         int32_t _next_node = 0;
         int32_t _next_pin = 0;
@@ -146,11 +162,14 @@ namespace vkd {
         template <class Archive>
         void serialize(Archive & ar, const uint32_t version)
         {
-            if (version == 0) {
+            if (version >= 0) {
                 ar(_next_node, _next_pin, _next_link, _nodes, 
                     _pin_to_node, _links, _display_node, _remove_link_mode, 
                     _next_node_loc, _last_added_node_output, _open_node_windows,
                     save_map);
+            }
+            if (version >= 1) {
+                ar(_id, _window_name);
             }
         }
     };

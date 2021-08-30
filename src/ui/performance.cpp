@@ -8,11 +8,14 @@ CEREAL_CLASS_VERSION(vkd::Performance::Report, 0);
 
 namespace vkd {
     void Performance::draw() {
-        ImGui::SetNextWindowPos(ImVec2(50, 50), ImGuiCond_Once);
+        if (!_open) {
+            return;
+        }
+        ImGui::SetNextWindowPos(ImVec2(50, 70), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_Once);
-        ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
+        ImGui::SetNextWindowCollapsed(false, ImGuiCond_FirstUseEver);
 
-        ImGui::Begin("performance");
+        ImGui::Begin("performance", &_open);
 
         ImGui::InputInt("reports to keep", &_reports_to_keep);
 
@@ -25,7 +28,7 @@ namespace vkd {
 
             ImGui::TableSetupColumn("no.", ImGuiTableColumnFlags_WidthFixed);
             ImGui::TableSetupColumn("type", ImGuiTableColumnFlags_WidthFixed);
-            ImGui::TableSetupColumn("time (ms)", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("time (µs)", ImGuiTableColumnFlags_WidthFixed);
             ImGui::TableSetupColumn("details", ImGuiTableColumnFlags_WidthStretch);
 
             ImGui::TableHeadersRow();

@@ -9,11 +9,13 @@
 
 #include "ghc/filesystem.hpp"
 
+CEREAL_CLASS_VERSION(vkd::MainUI, 0);
+
 namespace vkd {
     MainUI::MainUI() : _save_dialog(ImGuiFileBrowserFlags_EnterNewFilename) {
     	_timeline = std::make_shared<Timeline>();
+        _render_window = std::make_unique<RenderWindow>(*_timeline, _performance);
         _bin = std::make_unique<Bin>();
-    	//node_window = std::make_unique<vkd::NodeWindow>(timeline);
 
         _load_dialog.SetTitle("load graph");
         _load_dialog.SetTypeFilters({ ".bin" });
@@ -32,11 +34,31 @@ namespace vkd {
             
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
+                if(ImGui::MenuItem("New")) {
+                    clear();
+                }
+                ImGui::Separator();
                 if(ImGui::MenuItem("Load")) {
                     _load_dialog.Open();
                 }
                 if(ImGui::MenuItem("Save")) {
                     _save_dialog.Open();
+                }
+                ImGui::Separator();
+                if(ImGui::MenuItem("Quit")) {
+                    _has_quit = true;
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Window")) {
+                if(ImGui::MenuItem("Render")) {
+                    _render_window->open(true);
+                }
+                if(ImGui::MenuItem("Performance")) {
+                    _performance.open(true);
+                }
+                if(ImGui::MenuItem("Vulkan")) {
+                    _vulkan_window_open = true;
                 }
                 ImGui::EndMenu();
             }
@@ -56,11 +78,14 @@ namespace vkd {
             _graph->ui();
         }
 
-        for (auto&& node : _node_windows) {
-            node->draw(graph_changed);
-        }
-        if (graph_changed) {
-            _execute_graph();
+        if ( !_render_window->rendering()) {
+            for (auto&& node : _node_windows) {
+                node->draw(graph_changed);
+            }
+            // should grey out the node graphs, really
+            if (graph_changed) {
+                _execute_graph(ExecutionType::UI);
+            }
         }
 	    //node_window->draw();
 
@@ -78,6 +103,27 @@ namespace vkd {
             save(file);
             _save_dialog.ClearSelected();
         }
+
+        bool render_execute = false;
+        _render_window->draw(render_execute);
+        if (render_execute) {
+            _execute_graph(ExecutionType::Execution);
+        }
+    }
+
+    void MainUI::clear() {
+        _node_windows.clear();
+        _render_window = nullptr;
+        _timeline = nullptr;
+        _bin = nullptr;
+        _execute_graph_flag = false;
+        _vulkan_window_open = false;
+
+        _preferences.last_opened_project() = "";
+
+    	_timeline = std::make_shared<Timeline>();
+        _render_window = std::make_unique<RenderWindow>(*_timeline, _performance);
+        _bin = std::make_unique<Bin>();
     }
 
     void MainUI::load(std::string path) {
@@ -86,11 +132,11 @@ namespace vkd {
                 std::ifstream os(path, std::ios::binary);
                 cereal::BinaryInputArchive archive(os);
 
-                archive(_bin, _node_windows, _timeline, _execute_graph_flag, _performance);
+                archive(*this);
             }
             _preferences.last_opened_project() = path;
         } catch (...) {
-            std::cerr << "failed to save preferences" << std::endl;
+            std::cerr << "failed to save project" << std::endl;
         }
         
         save_preferences();
@@ -106,12 +152,12 @@ namespace vkd {
                 std::ofstream os(p.generic_string(), std::ios::binary);
                 cereal::BinaryOutputArchive archive(os);
 
-                archive(_bin, _node_windows, _timeline, _execute_graph_flag, _performance);
+                archive(*this);
             }
             
             _preferences.last_opened_project() = path;
         } catch (...) {
-            std::cerr << "failed to save preferences" << std::endl;
+            std::cerr << "failed to save project" << std::endl;
         }
 
         save_preferences();
@@ -141,10 +187,29 @@ namespace vkd {
         }
     }
 
+    void MainUI::add_node_graph() {
+        Bin::Entry entry;
+        entry.path = "";
+        add_node_graph(entry);
+    }
+
     void MainUI::add_node_graph(const Bin::Entry& entry) {
-        _node_windows.emplace_back(std::make_unique<NodeWindow>());
+        _node_windows.emplace_back(std::make_unique<NodeWindow>(_node_window_id));
+        _node_window_id++;
+
         if (entry.path != "") {
-            _node_windows.back()->add_input(entry);
+            _node_windows.back()->initial_input(entry);
+            
+            auto graph_builder = std::make_unique<vkd::GraphBuilder>();
+            
+            for (auto&& node : _node_windows) {
+                node->build_nodes(*graph_builder);
+            }
+
+            auto graph = graph_builder->bake(_device);
+            if (graph) {
+                _node_windows.back()->sequencer_size_to_loaded_content();
+            }
         }
 
         _timeline->add_line(_node_windows.back()->sequencer_line());
@@ -156,7 +221,9 @@ namespace vkd {
         }
 
         for (auto&& draw : _draws) {
-            draw->commands(buf, width, height);
+            if (draw && draw->range_contains(_timeline->current_frame())) {
+                draw->commands(buf, width, height);
+            }
         }
     }
 
@@ -169,19 +236,25 @@ namespace vkd {
 
     void MainUI::update() {
         if (_graph != nullptr) {
-            if (_timeline->play()) {
-                _timeline->increment();
-            }
+            if (!_render_window->rendering()) {
+                if (_timeline->play()) {
+                    _timeline->increment();
+                }
 
-            _graph->set_param("frame", _timeline->current_frame());
-            _execute_graph_flag = _graph->update() || _timeline->play();
+                _graph->set_frame(_timeline->current_frame());
+                _execute_graph_flag = _graph->update(ExecutionType::UI) || _timeline->play();
+            }
         }
     }
 
     void MainUI::execute() {
+        if (_graph) {
+            _render_window->execute(*_graph);
+        }
+
         if (_graph != nullptr && _execute_graph_flag) {
             auto before = std::chrono::high_resolution_clock::now();
-            _graph->execute();
+            _graph->execute(ExecutionType::UI);
             auto after = std::chrono::high_resolution_clock::now();
 
             auto diff = std::chrono::duration_cast<std::chrono::microseconds>(after - before).count();
@@ -200,7 +273,9 @@ namespace vkd {
         }
 
         for (auto&& draw : _draws) {
-            draw->execute(VK_NULL_HANDLE, VK_NULL_HANDLE);
+            if (draw && draw->range_contains(_timeline->current_frame())) {
+                draw->execute(ExecutionType::UI, VK_NULL_HANDLE, VK_NULL_HANDLE);
+            }
         }
     }
 
@@ -213,9 +288,10 @@ namespace vkd {
             auto cast = std::dynamic_pointer_cast<vkd::ImageNode>(term);
             if (cast != nullptr) {
                 _draws[i] = std::make_shared<vkd::DrawFullscreen>();
-                _draws[i]->inputs({term});
+                _draws[i]->graph_inputs({term});
                 vkd::engine_node_init(_draws[i], "____draw");
                 _draws[i]->init();
+                _draws[i]->set_range(term->range());
                 ++i;
             } else {
                 _draws[i] = nullptr;
@@ -223,7 +299,7 @@ namespace vkd {
         }
     }
 
-    void MainUI::_execute_graph() {
+    void MainUI::_execute_graph(ExecutionType type) {
         auto before = std::chrono::high_resolution_clock::now();
 
         std::deque<int32_t> node_queue;
@@ -236,16 +312,24 @@ namespace vkd {
             node->build_nodes(*graph_builder);
         }
 
-        _graph = graph_builder->bake(_timeline->current_frame());
-        _rebuild_draws();
+        if (type == ExecutionType::Execution) {
+            auto terms = graph_builder->unbaked_terminals();
 
-        _execute_graph_flag = true;
+            _render_window->attach_renderer(*graph_builder.get(), terms);
+        }
+
+        _graph = graph_builder->bake(_device);
+
+        if (_graph && type == ExecutionType::UI) {
+            _rebuild_draws();
+            _execute_graph_flag = true;
+        }
 
         auto after = std::chrono::high_resolution_clock::now();
 
         auto diff = std::chrono::duration_cast<std::chrono::microseconds>(after - before).count();
 
-        std::string report = "Build";
+        std::string report = _graph ? "Build" : "Build (failed)";
 
         _performance.add(report, diff, "");
     }

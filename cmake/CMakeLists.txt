@@ -18,7 +18,14 @@ include(CTest)
 
 set(CMAKE_MODULE_PATH ./modules)
 
-if(NOT APPLE)
+if(WIN32)
+set(SDL2_PATH ../external/SDL2)
+set(SDL2_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../external/SDL2/include)
+set(SDL2_LIBRARY ${CMAKE_SOURCE_DIR}/../external/SDL2/lib/RelWithDebInfo/SDL2.lib)
+
+set(FFMPEG_ROOT ../external/ffmpeg-4.4-full_build-shared)
+
+elseif(NOT APPLE)
 set(SDL_INCLUDE_DIR ../external/SDL/include)
 set(SDL_LIBRARY ../external/SDL/lib/Release/libSDL2.a)
 else()
@@ -29,7 +36,7 @@ endif()
 
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
-find_package(Vulkan)
+find_package(Vulkan REQUIRED)
 find_package(X11)
 find_package(FFmpeg REQUIRED)
 
@@ -40,10 +47,11 @@ IF(SDL2_FOUND)
   set_property(TARGET sdl2 PROPERTY INTERFACE_LINK_LIBRARIES ${SDL2_LIBRARY})
 ENDIF(SDL2_FOUND)
 
-if(NOT APPLE)
+if(NOT APPLE AND UNIX)
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -Wno-psabi)
 endif()
 
+add_subdirectory(../external/enkiTS-1.10 ${CMAKE_BINARY_DIR}/enkiTS)
 add_subdirectory(../external/spirv-reflect ${CMAKE_BINARY_DIR}/spirv-reflect)
 add_subdirectory(../external/glm ${CMAKE_BINARY_DIR}/glm)
 add_subdirectory(../external/ktx ${CMAKE_BINARY_DIR}/ktx)

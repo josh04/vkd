@@ -170,7 +170,10 @@ struct ImGui_ImplVulkan_InitInfo
         */
     }
 
-    bool DrawUI::update() {
+    void DrawUI::post_init() {
+    }
+
+    bool DrawUI::update(ExecutionType type) {
         
        // bool update_buffers = false;
 /*
@@ -299,8 +302,12 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
         */
     }
 
-    void DrawUI::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void DrawUI::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
 
+    }
+
+    void DrawUI::flush() const {
+        ImGui_ImplVulkan_CleanupDescriptors();
     }
 
     void DrawUI::create_font() {

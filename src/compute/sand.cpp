@@ -35,7 +35,7 @@ namespace vkd {
         _add_loc_stage->create(sand_add_size);
         _add_loc_map = (uint32_t*)_add_loc_stage->map();
 
-        update();
+        update(ExecutionType::UI);
 
         _sand_locations = std::make_shared<vkd::Image>(_device);
         _sand_locations->create_image(VK_FORMAT_R32G32B32A32_UINT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -81,6 +81,7 @@ namespace vkd {
         _sand_bottom_bump->init("shaders/compute/sand_bottom_bump.comp.spv", "main", {256, 1, 1});
         _sand_bottom_bump->set_arg(0, _sand_locations);
         _sand_bottom_bump->set_arg(1, _sand_locations_scratch);
+        _sand_bottom_bump->set_arg(2, _sand_locations_sc);
         _sand_bottom_bump->update();
 
         _sand_process = std::make_shared<Kernel>(_device, param_hash_name());
@@ -112,7 +113,7 @@ namespace vkd {
         auto buf2 = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
 
         _sand_clear->dispatch(buf2, _width, _height);
-        //_sand_add_bumpers->dispatch(buf2, _width, _height);
+        _sand_add_bumpers->dispatch(buf2, _width, _height);
 
         vkd::flush_command_buffer(_device->logical_device(), _device->compute_queue(), _device->command_pool(), buf2);
 
@@ -122,7 +123,11 @@ namespace vkd {
         _compute_complete = create_semaphore(_device->logical_device());
     }
 
-    bool Sand::update() {
+    void Sand::post_init()
+    {
+    }
+
+    bool Sand::update(ExecutionType type) {
         memset(_add_loc_map, 0, sizeof(uint32_t) * _width);
         for (int i = 1; i < _width; ++i) {
             if (i % (_width/5) == 0) {
@@ -185,7 +190,7 @@ namespace vkd {
         return update;
     }
 
-    void Sand::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void Sand::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
         submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

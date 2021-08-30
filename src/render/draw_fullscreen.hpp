@@ -50,9 +50,10 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<DrawFullscreen>(); }
 
         void init() override;
-        bool update() override { return false; }
+        void post_init() override;
+        bool update(ExecutionType type) override { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override;
-        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
+        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
 
         struct FSVertex {
             glm::vec2 position;

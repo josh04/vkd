@@ -2,6 +2,9 @@
 #include "device.hpp"
 
 namespace vkd {
+    DescriptorPool::~DescriptorPool() {
+        vkDestroyDescriptorPool(_device->logical_device(), _desc_pool, nullptr);
+    }
     
     void DescriptorPool::add_storage_image(uint32_t count) {
         if (count > 0) {

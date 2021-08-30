@@ -1,5 +1,6 @@
 #include "command_buffer.hpp"
 #include "compute/kernel.hpp"
+#include "device.hpp"
 
 namespace vkd {
     VkCommandBuffer create_command_buffer(VkDevice logical_device, VkCommandPool pool) {
@@ -66,7 +67,7 @@ namespace vkd {
 		vkFreeCommandBuffers(device, pool, 1, &buf);
 	}
 
-	void submit_command_buffer(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, VkSemaphore wait, VkSemaphore signal, VkFence fence) {
+	void submit_command_buffer(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, VkSemaphore wait, VkSemaphore signal, Fence * fence) {
 		// Submit compute commands
 		VkSubmitInfo submit_info = {};
 		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -77,11 +78,43 @@ namespace vkd {
 		submit_info.pWaitDstStageMask = &wait_stage_mask;
 		submit_info.signalSemaphoreCount = (signal != VK_NULL_HANDLE) ? 1 : 0;
 		submit_info.pSignalSemaphores = &signal;
-		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence));
+		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr));
 	}
 
-	void submit_compute_buffer(VkQueue queue, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal, VkFence fence) {
+	void submit_compute_buffer(VkQueue queue, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal, Fence * fence) {
 		submit_command_buffer(queue, buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, wait, signal, fence);
+	}
+	
+	CommandBuffer::~CommandBuffer() {
+		vkFreeCommandBuffers(_device->logical_device(), _device->command_pool(), 1, &_buf);
+	}
+	
+	CommandBufferPtr CommandBuffer::make(const std::shared_ptr<Device>& device) {
+		auto ptr = std::make_unique<CommandBuffer>();
+		ptr->create(device);
+		return ptr;
+	}
+	
+	void CommandBuffer::create(const std::shared_ptr<Device>& device) {
+		_device = device;
+		_buf = create_command_buffer(_device->logical_device(), _device->command_pool());
+	}
+
+	void CommandBuffer::begin() {
+		_desc_sets.clear();
+		begin_command_buffer(_buf);
+	}
+
+	void CommandBuffer::end() {
+		end_command_buffer(_buf);
+	}
+
+	void CommandBuffer::flush() {
+		flush_command_buffer(_device->logical_device(), _device->compute_queue(), _device->command_pool(), _buf);
+	}
+
+	void CommandBuffer::submit(VkSemaphore wait, VkSemaphore signal, Fence * fence) {
+		submit_compute_buffer(_device->compute_queue(), _buf, wait, signal, fence);
 	}
 
 }

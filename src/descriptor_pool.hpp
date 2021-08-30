@@ -9,7 +9,7 @@ namespace vkd {
 	class DescriptorPool {
 	public:
 		DescriptorPool(std::shared_ptr<Device> device) : _device(device) {}
-		~DescriptorPool() = default;
+		~DescriptorPool();
 		DescriptorPool(DescriptorPool&&) = delete;
 		DescriptorPool(const DescriptorPool&) = delete;
 

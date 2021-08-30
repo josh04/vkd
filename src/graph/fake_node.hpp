@@ -3,6 +3,7 @@
 #include <memory>
 #include <map>
 #include <vector>
+#include <set>
 #include <string>
 
 #include "vulkan.hpp"
@@ -35,9 +36,9 @@ namespace vkd {
         void ui() {}
 
         VkSemaphore wait_prerender() const { return VK_NULL_HANDLE; }
-        bool update() { return false; }
+        bool update(ExecutionType type) { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {}
-        void execute(VkSemaphore wait_semaphore, VkFence fence) {}
+        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {}
 
         std::shared_ptr<EngineNode> real_node() const { return _real_node; }
         void real_node(std::shared_ptr<EngineNode> node);
@@ -45,23 +46,52 @@ namespace vkd {
         const auto& inputs() const { return _inputs; }
         const auto& outputs() const { return _outputs; }
 
-        const ShaderParamMap& params() const { 
-            if (_real_node) {
-                return _real_node->params();
-            }
-            static const ShaderParamMap empty;
-            return empty;
+        ShaderParamMap& params() {
+            return _param_map;
         }
 
+        const ShaderParamMap& params() const {
+            return _param_map;
+        }
+
+        void set_params(const ShaderParamMap& params) {
+            _param_map = params;
+        }
+
+        template<typename T>
+        void set_param(const std::string& name, const T& value) {
+            if (_param_map.find("_") == _param_map.end()) {
+                _param_map.emplace("_", std::map<std::string, std::shared_ptr<ParameterInterface>>{});
+            }
+
+            auto&& set = _param_map.at("_");
+            auto search = set.find(name);
+            if (search != set.end()) {
+                search->second->as<T>().set_force(value);
+            } else {
+                auto param = make_param<T>(node_name(), "path", 0);
+                set[name] = param;
+                param->template as<T>().set_default(value);
+            }
+        }
+
+        void set_state(UINodeState state) { _state = state; }
+        auto get_state() const { return _state; }
+
+        void set_range(const FrameRange& range) { _range = range; }
+        auto range() const { return _range; }
     private:
         void add_output(FakeNodePtr node);
         int32_t _ui_id;
+        UINodeState _state = UINodeState::normal;
         std::string _node_name;
         std::string _node_type;
         std::vector<FakeNodePtr> _inputs;
         std::vector<FakeNodePtr> _outputs;
         
         std::shared_ptr<EngineNode> _real_node = nullptr;
+        ShaderParamMap _param_map;
+        FrameRange _range;
     };
 
     class GraphBuilder {
@@ -73,7 +103,9 @@ namespace vkd {
 
         void add(FakeNodePtr node);
 
-        std::unique_ptr<Graph> bake(const Frame& frame);
+        std::vector<FakeNodePtr> unbaked_terminals() const;
+
+        std::unique_ptr<Graph> bake(const std::shared_ptr<Device>& device);
     private:
         std::vector<FakeNodePtr> _nodes;
 

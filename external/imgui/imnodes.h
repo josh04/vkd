@@ -182,9 +182,11 @@ void EndNodeEditor();
 
 // Use PushColorStyle and PopColorStyle to modify Style::colors mid-frame.
 void PushColorStyle(ColorStyle item, unsigned int color);
+void PopColorStyle(const int count); // JOSH
 void PopColorStyle();
 void PushStyleVar(StyleVar style_item, float value);
 void PopStyleVar();
+void PopStyleVar(const int count); // JOSH
 
 // id can be any positive or negative integer, but INT_MIN is currently reserved for internal use.
 void BeginNode(int id);

@@ -44,35 +44,38 @@ namespace vkd {
         half_window->as<int>().max(200);
 
         _compute_complete = create_semaphore(_device->logical_device());
+
+        auto image = _image_node->get_output_image();
+        _size = image->dim();
+
+        _stage = std::make_shared<vkd::Image>(_device);
+        _stage->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+        _stage->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        _stage->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
+
+        _image = std::make_shared<vkd::Image>(_device);
+        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+        _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
+
+        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+        _stage->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
+
+        _horiz->set_arg(0, image);
+        _horiz->set_arg(1, _stage);
+        _horiz->update();
+        _vert->set_arg(0, _stage);
+        _vert->set_arg(1, _image);
+        _vert->update();
     }
 
-    bool Gaussian::update() {
-        if (_size == glm::uvec2{0,0}) {
-            auto image = _image_node->get_output_image();
-            _size = image->dim();
+    void Gaussian::post_init()
+    {
+    }
 
-            _stage = std::make_shared<vkd::Image>(_device);
-            _stage->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
-            _stage->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            _stage->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
-
-            _image = std::make_shared<vkd::Image>(_device);
-            _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
-            _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
-
-            auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
-            _stage->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-            _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-            vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
-
-            _horiz->set_arg(0, image);
-            _horiz->set_arg(1, _stage);
-            _horiz->update();
-            _vert->set_arg(0, _stage);
-            _vert->set_arg(1, _image);
-            _vert->update();
-        }
+    bool Gaussian::update(ExecutionType type) {
 
         bool update = false;
         for (auto&& pmap : _params) {
@@ -93,7 +96,7 @@ namespace vkd {
         return update;
     }
 
-    void Gaussian::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void Gaussian::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
         submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

@@ -1,0 +1,39 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+
+#include "../include/709.h"
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+
+layout(std430, binding = 1) buffer Buf 
+{
+   uint output_buffer[ ];
+};
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    ivec2 _size;
+} push;
+
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    ivec2 pcoord = ivec2(coord.x * 4, coord.y);
+
+    vec4 inp  = bt709rgbyuv(imageLoad(inputTex, pcoord));
+    vec4 inp2 = bt709rgbyuv(imageLoad(inputTex, pcoord + ivec2(1, 0)));
+    vec4 inp3 = bt709rgbyuv(imageLoad(inputTex, pcoord + ivec2(2, 0)));
+    vec4 inp4 = bt709rgbyuv(imageLoad(inputTex, pcoord + ivec2(3, 0)));
+    
+    // packUnorm4x8(vec4(1.0, 1.0, 1.0, 1.0));
+    // packUnorm4x8(vec4(inp.x, inp2.x, inp3.x, inp4.x));
+    int ind = (push._size.x / 4) * coord.y + coord.x;
+    output_buffer[ind] = packUnorm4x8(vec4(inp.x, inp2.x, inp3.x, inp4.x));
+}
+
+

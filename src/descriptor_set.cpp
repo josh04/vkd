@@ -3,6 +3,7 @@
 #include "buffer.hpp"
 #include "image.hpp"
 #include "descriptor_sets.hpp"
+#include "graph_exception.hpp"
 
 namespace vkd {
     DescriptorSet::~DescriptorSet() {
@@ -48,6 +49,9 @@ namespace vkd {
         auto&& layout_bindings = _layout->bindings();
         std::vector<VkWriteDescriptorSet> write_desc_sets(layout_bindings.size());
         int i = 0;
+        if (layout_bindings.size() != _bindings.size()) {
+            throw UpdateException("bindings not sufficient");
+        }
         for (auto&& bind : layout_bindings) {
             auto&& write_desc_set = write_desc_sets[i];
             write_desc_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

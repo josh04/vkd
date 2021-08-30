@@ -38,7 +38,11 @@ namespace vkd {
         _square->set_push_arg_by_name(_compute_command_buffer, "col", d1.col);
     }
 
-    bool ColourSquares::update() {
+    void ColourSquares::post_init()
+    {
+    }
+
+    bool ColourSquares::update(ExecutionType type) {
         bool update = false;
         for (auto&& pmap : _params) {
             for (auto&& el : pmap.second) {
@@ -64,7 +68,7 @@ namespace vkd {
         return update;
     }
 
-    void ColourSquares::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void ColourSquares::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
         submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

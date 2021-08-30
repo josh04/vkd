@@ -13,27 +13,34 @@ extern "C" {
 namespace vkd {
     REGISTER_NODE("ffmpeg", "ffmpeg", Ffmpeg);
 
-    Ffmpeg::BlockEditParams::BlockEditParams(ShaderParamMap& map) {
+    Ffmpeg::BlockEditParams::BlockEditParams(ShaderParamMap& map, std::string hash) {
         
-        frame_start_block = make_param<ParameterType::p_frame>("", "frame_start_block", 0);
-        frame_end_block = make_param<ParameterType::p_frame>("", "frame_end_block", 0);
-        content_relative_start = make_param<ParameterType::p_frame>("", "content_relative_start", 0);
+        total_frame_count = make_param<ParameterType::p_int>(hash, "_total_frame_count", 0);
 
+        frame_start_block = make_param<ParameterType::p_frame>(hash, "frame_start_block", 0);
+        frame_end_block = make_param<ParameterType::p_frame>(hash, "frame_end_block", 0);
+        content_relative_start = make_param<ParameterType::p_frame>(hash, "content_relative_start", 0);
+
+        map["_"].emplace(total_frame_count->name(), total_frame_count);
         map["_"].emplace(frame_start_block->name(), frame_start_block);
         map["_"].emplace(frame_end_block->name(), frame_end_block);
         map["_"].emplace(content_relative_start->name(), content_relative_start);
     }
 
-    Ffmpeg::Ffmpeg() : _block(_params) {
-        _path_param = make_param<ParameterType::p_string>("", "path", 0);
+    Ffmpeg::Ffmpeg() : _block() {
+
+    }
+
+    void Ffmpeg::post_setup() {
+        _block = BlockEditParams{_params, param_hash_name()};
+        _path_param = make_param<ParameterType::p_string>(param_hash_name(), "path", 0);
         _path_param->as<std::string>().set_default("test.mp4");
         _path_param->tag("filepath");
 
-        _frame_param = make_param<ParameterType::p_frame>("", "frame", 0);
+        _frame_param = make_param<ParameterType::p_frame>(param_hash_name(), "frame", 0);
         
         _params["_"].emplace(_path_param->name(), _path_param);
         _params["_"].emplace(_frame_param->name(), _frame_param);
-
     }
 
     Ffmpeg::~Ffmpeg() {
@@ -59,17 +66,21 @@ namespace vkd {
             );
         });
 
+        if (_path_param->as<std::string>().get().size() < 3) {
+            throw GraphException("No path provided to ffmpeg node.");
+        } 
+
         _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
         _compute_complete = create_semaphore(_device->logical_device());
 
         _format_context = avformat_alloc_context();
         
         if (avformat_open_input(&_format_context, _path_param->as<std::string>().get().c_str(), nullptr, nullptr) != 0) {
-            throw std::runtime_error("Error while calling avformat_open_input (probably invalid file format)");
+            throw GraphException("Error while calling avformat_open_input (probably invalid file format)");
         }
         
         if (avformat_find_stream_info(_format_context, nullptr) < 0) {
-            throw std::runtime_error("Error while calling avformat_find_stream_info");
+            throw GraphException("Error while calling avformat_find_stream_info");
         }
         
         _video_stream = nullptr;
@@ -83,13 +94,13 @@ namespace vkd {
         }
         
         if (!_video_stream) {
-            throw std::runtime_error("Didn't find video streams in the file (probably audio file)");
+            throw GraphException("Didn't find video streams in the file (probably audio file)");
         }
         
         // getting the required codec structure
         const auto codecL = avcodec_find_decoder(_video_stream->codecpar->codec_id);
         if (codecL == nullptr) {
-            throw std::runtime_error("Codec required by video file not available");
+            throw GraphException("Codec required by video file not available");
         }
         
         // allocating a structure
@@ -100,22 +111,23 @@ namespace vkd {
         
         // initializing the structure by opening the codec
         if (avcodec_open2(_codec_context, codecL, nullptr) < 0) {
-            throw std::runtime_error("Could not open codec");
+            throw GraphException("Could not open codec");
         }
         
         _width = _video_stream->codecpar->width;
         _height = _video_stream->codecpar->height;
         
         _frame_count = _video_stream->nb_frames + 1 - ((_video_stream->nb_frames + 1) % 2);
+        _block.total_frame_count->as<int>().set_force(_frame_count > 0 ? _frame_count : 100);
         
-        size_t buffer_size = _width * _height * 1.5 * sizeof(uint8_t);
+        _buffer_size = _width * _height * 1.5 * sizeof(uint8_t);
 
         _staging_buffer = std::make_shared<StagingBuffer>(_device);
-        _staging_buffer->create(buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        _staging_buffer->create(_buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         _staging_buffer_ptr = (uint32_t*)_staging_buffer->map();
 
         _gpu_buffer = std::make_shared<StorageBuffer>(_device);
-        _gpu_buffer->create(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        _gpu_buffer->create(_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
         _image = std::make_shared<vkd::Image>(_device);
         _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
@@ -137,7 +149,7 @@ namespace vkd {
 
         begin_command_buffer(_compute_command_buffer);
 
-        _gpu_buffer->copy(*_staging_buffer, buffer_size, _compute_command_buffer);
+        _gpu_buffer->copy(*_staging_buffer, _buffer_size, _compute_command_buffer);
         _gpu_buffer->barrier(_compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         _yuv420->dispatch(_compute_command_buffer, _width, _height);
@@ -151,10 +163,27 @@ namespace vkd {
         _current_frame = 0;
     }
 
-    bool Ffmpeg::update() {
+    void Ffmpeg::post_init()
+    {
+    }
+
+    bool Ffmpeg::update(ExecutionType type) {
         bool updated = false;
 
-        scrub(_frame_param->as<Frame>().get());
+        auto frame = _frame_param->as<Frame>().get();
+        scrub(_block.translate(frame, _frame_count > 0));
+
+        auto start_block = _block.frame_start_block->as<Frame>().get();
+        auto end_block = _block.frame_end_block->as<Frame>().get();
+        if (frame.index < start_block.index || frame.index > end_block.index) {
+            memset(_staging_buffer_ptr, 0, _buffer_size);
+            if (!_blanked) {
+                _blanked = true;
+                updated = true;
+            }
+            return updated;
+        }
+        _blanked = false;
 
         if (_force_scrub) {
             //scrub(_timeline->current_frame());
@@ -175,7 +204,7 @@ namespace vkd {
                     if (av_read_frame(_format_context, packet.get()) < 0) {
                         _eof = true;
                         break;
-                        //throw std::runtime_error("ran out of packets");
+                        //throw GraphException("ran out of packets");
                     }
                     if (packet->stream_index == _video_stream->index) {
                         avcodec_send_packet(_codec_context, packet.get());
@@ -183,7 +212,7 @@ namespace vkd {
                 } else if (ret == AVERROR_EOF) {
                     return false;
                 } else if (ret == AVERROR(EINVAL)) {
-                    throw std::runtime_error("decode failed");
+                    throw GraphException("decode failed");
                 } else if (avFrame->pkt_pts < _target_pts) {
                     //std::cout << "target pts: " << _target_pts << "pts: " << packet->pts << " dts: " << packet->pts << std::endl;
                     //std::cout << "skippe frame: " << avFrame->pkt_pts << std::endl;
@@ -232,22 +261,27 @@ namespace vkd {
         return updated;
     }
 
-    void Ffmpeg::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void Ffmpeg::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
         _last_fence = fence;
         submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 
     void Ffmpeg::scrub(const Frame& frame) {
         auto i = frame.index;
+
+        if (_frame_count > 0 && i > _block.total_frame_count->as<int>().get()) {
+            i = _block.total_frame_count->as<int>().get() - 1;
+        }
+
+        i = std::max((int64_t)0, i);
+
         if (i == _current_frame) {
             return;
         } else if (i == _current_frame + 1) {
             _decode_next_frame = true;
             _current_frame = i;
         } else {
-            if (i > _frame_count) {
-                i = _frame_count - 1;
-            }
+            
             int64_t pos = 0;
             if (_video_stream->time_base.num) {
                 pos = i * _video_stream->r_frame_rate.den;
@@ -258,11 +292,11 @@ namespace vkd {
             //std::cout << "seek pos: " << pos << std::endl;
 
             if (pos < 0) {
-                throw std::runtime_error("uh oh");
+                throw GraphException("uh oh");
             }
             
             if (0 > avformat_seek_file(_format_context, _video_stream->index, INT64_MIN, pos, INT64_MAX, 0)) {
-                throw std::runtime_error("failed to seek");
+                throw GraphException("failed to seek");
             }
 
             avcodec_flush_buffers(_codec_context);

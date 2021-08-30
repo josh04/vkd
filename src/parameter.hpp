@@ -69,6 +69,13 @@ namespace vkd {
     struct Frame {
         int64_t index;
     };
+
+    static bool operator<(const Frame& lhs, const Frame& rhs) {
+        return lhs.index < rhs.index;
+    }
+    static bool operator==(const Frame& lhs, const Frame& rhs) {
+        return lhs.index == rhs.index;
+    }
     
     template<class Archive>
     void serialize(Archive & archive, vkd::Frame& vec, const uint32_t version) {
@@ -184,14 +191,22 @@ namespace vkd {
             return true;
         }
 
-        void set(P p) {
+        void set_force(P p) {
             if constexpr (is_numeric<P>()) {
-                p = glm::min(glm::max(p, min()), max());
+                min(glm::min(p, min()));
+                max(glm::max(p, max()));
             }
             _value = p;
             _data.resize(sizeof(P));
             memcpy(_data.data(), &p, sizeof(P));
             _changed = true;
+        }
+
+        void set(P p) {
+            if constexpr (is_numeric<P>()) {
+                p = glm::min(glm::max(p, min()), max());
+            }
+            set_force(p);
         }
 
         void set_default(P p) {
@@ -290,6 +305,19 @@ namespace vkd {
     template<> struct _ptype<ParameterType::p_string> { using type = std::string; };
     template<> struct _ptype<ParameterType::p_frame> { using type = Frame; };
 
+    template<typename T> struct _qtype;
+    template<> struct _qtype<float> { static constexpr ParameterType type = ParameterType::p_float; };
+    template<> struct _qtype<int> { static constexpr ParameterType type = ParameterType::p_int; };
+    template<> struct _qtype<unsigned int> { static constexpr ParameterType type = ParameterType::p_uint; };
+    template<> struct _qtype<glm::vec2> { static constexpr ParameterType type = ParameterType::p_vec2; };
+    template<> struct _qtype<glm::vec4> { static constexpr ParameterType type = ParameterType::p_vec4; };
+    template<> struct _qtype<glm::ivec2> { static constexpr ParameterType type = ParameterType::p_ivec2; };
+    template<> struct _qtype<glm::ivec4> { static constexpr ParameterType type = ParameterType::p_ivec4; };
+    template<> struct _qtype<glm::uvec2> { static constexpr ParameterType type = ParameterType::p_uvec2; };
+    template<> struct _qtype<glm::uvec4> { static constexpr ParameterType type = ParameterType::p_uvec4; };
+    template<> struct _qtype<std::string> { static constexpr ParameterType type = ParameterType::p_string; };
+    template<> struct _qtype<Frame> { static constexpr ParameterType type = ParameterType::p_frame; };
+
     template<ParameterType T> 
     std::shared_ptr<ParameterInterface> make_param(const std::string& hash, const std::string& name, size_t offset) { 
         if (ParameterCache::has(T, hash + name)) {
@@ -302,6 +330,10 @@ namespace vkd {
         param->offset(offset);
         ParameterCache::add(T, hash + name, param);
         return param;
+    }
+    template<typename T> 
+    std::shared_ptr<ParameterInterface> make_param(const std::string& hash, const std::string& name, size_t offset) { 
+        return make_param<_qtype<T>::type>(hash, name, offset);
     }
 }
 /*

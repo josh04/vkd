@@ -11,5 +11,5 @@ set(IMGUI_SOURCE
 )
 
 add_library(imgui STATIC ${IMGUI_SOURCE})
-
+target_link_libraries(imgui PUBLIC Vulkan::Vulkan)
 target_include_directories(imgui PUBLIC ..)

@@ -6,8 +6,6 @@ extern "C" {
 }
 
 #include "SDL2/SDL.h"
-
-
 #include "sdl2.h"
 #undef main
 
@@ -16,77 +14,19 @@ extern "C" {
 #include "glexception.hpp"
 #include "vulkan.hpp"
 #include "render/draw_ui.hpp"
-#include "ui/nodes.hpp"
+#include "ui/node_window.hpp"
 
 namespace vkd {
 	class Device;
 }
 
 namespace {
-
 	std::unique_ptr<imguiDrawer> ui = nullptr;
-
-	// GL state
-	bool gRenderQuad = true;
-	GLuint gProgramID = 0;
-	GLint gVertexPos2DLocation = -1;
-	GLuint gVBO = 0;
-	GLuint gIBO = 0;
-	GLuint gVAO = 0;
-	GLuint gTex = 0;
-
-	GLuint imageVBO = 0;
-
-	constexpr int width_ = 3480;
-	constexpr int height_ = 2160;
-	constexpr int mem_dim_ = width_ * height_ * 4 * sizeof(float);
 }
 
-void render(float anim_time)
-{
-	//render_host(anim_time);
-/*
-	//Clear color buffer
-	glGetError();
-	glClear(GL_COLOR_BUFFER_BIT);
-	_glException();
-
-	//Render quad
-	if (gRenderQuad)
-	{
-		//Bind program
-		glUseProgram(gProgramID);
-		_glException();
-
-		//Enable vertex position
-		glEnableVertexAttribArray(gVertexPos2DLocation);
-		_glException();
-
-		//Set vertex data
-		glBindBuffer(GL_ARRAY_BUFFER, gVBO);
-		_glException();
-		glVertexAttribPointer(gVertexPos2DLocation, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), NULL);
-		_glException();
-
-		//Set index data and render
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIBO);
-		_glException();
-		glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_SHORT, NULL);
-		_glException();
-
-		//Disable vertex position
-		glDisableVertexAttribArray(gVertexPos2DLocation);
-		_glException();
-
-		//Unbind program
-		glUseProgram(0);
-		_glException();
-	}
-	*/
-
+void render(bool& quit) {
 	ui->preRender();
-	vkd::ui();
-	//ImGui::ShowDemoWindow();
+	vkd::ui(quit);
 	ui->render();
 	vkd::draw();
 }
@@ -172,18 +112,14 @@ int main(int argc, char** argv) {
 	ui->resize(width_sm, height_sm, width_sm, height_sm);
 
 	bool quit = false;
-	float anim_time = 0.0f;
 	
 #if defined(unix) and !defined(__APPLE__)
 	SDL_GL_SwapWindow(win.get());
 #endif
 
-
 	while (!quit) {
-
 		SDL_Event e;
 
-		//Handle events on queue
 		while (SDL_PollEvent(&e) != 0) {
 			if (e.type == SDL_MOUSEMOTION) {
 				ui->mouseMove(e.motion.x, height_sm - e.motion.y);
@@ -198,6 +134,9 @@ int main(int argc, char** argv) {
 			}
 			else if (e.type == SDL_MOUSEBUTTONUP) {
 				ui->mouseUp(e.button.button);
+			}
+			else if (e.type == SDL_MOUSEWHEEL) {
+				ui->mouseScroll(e.wheel.y);
 			} else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
 				int key = e.key.keysym.scancode;
 				ui->keyChange(key, (e.type == SDL_KEYDOWN));
@@ -212,9 +151,7 @@ int main(int argc, char** argv) {
 			}
 		}
 
-		//Render quad
-		render(anim_time);
-		anim_time += 1.0f;
+		render(quit);
 
 		//Update screen
 		//SDL_GL_SwapWindow(win.get());

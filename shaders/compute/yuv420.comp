@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
+
+#include "../include/709.h"
 
 // Binding 0 : Position storage buffer
 layout(std430, binding = 0) buffer Buf 
@@ -18,15 +21,6 @@ uint uint8_buffer(int coord_x) {
     uint y = image[(coord_x - xoff) / 4];
     uint ret = (y >> (8 * xoff)) & 0xFF;
     return ret;
-}
-
-vec4 bt709yuvrgb(vec4 yuv) {
-    yuv.y = yuv.y - 0.5;
-    yuv.z = yuv.z - 0.5;
-    const float r = yuv.x*1 + yuv.y*0 +         yuv.z*1.570;
-    const float g = yuv.x*1 + yuv.y*-0.187 +    yuv.z*-0.467;
-    const float b = yuv.x*1 + yuv.y*1.856 +     yuv.z*0;
-    return vec4(r, g, b, 1.0f);
 }
 
 void main() 

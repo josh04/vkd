@@ -24,9 +24,10 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<ColourSquares>(_width, _height); }
 
         void init() override;
-        bool update() override;
+        void post_init() override;
+        bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(VkSemaphore wait_semaphore, VkFence fence) override;
+        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
 
         //Buffer& storage_buffer() { return *_compute_storage_buffer; }
         VkSemaphore wait_prerender() const override { return _compute_complete; }

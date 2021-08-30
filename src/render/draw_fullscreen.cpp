@@ -80,6 +80,10 @@ namespace vkd {
         _pipeline->create(_desc_set_layout->get(), std::move(shader_stages), std::move(vertex_input));
     }
 
+    void DrawFullscreen::post_init()
+    {
+    }
+
     void DrawFullscreen::commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {
         if (!_desc_set) {
             _desc_set = std::make_shared<DescriptorSet>(_device, _desc_set_layout, _desc_pool);
@@ -120,7 +124,7 @@ namespace vkd {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawFullscreen::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void DrawFullscreen::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
         submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
     }
 }

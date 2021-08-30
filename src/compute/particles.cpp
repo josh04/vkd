@@ -66,8 +66,11 @@ namespace vkd {
         _compute_complete = create_semaphore(_device->logical_device());
     }
 
+    void Particles::post_init()
+    {
+    }
 
-    void Particles::execute(VkSemaphore wait_semaphore, VkFence fence) {
+    void Particles::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
 		// Wait for rendering finished
 		VkPipelineStageFlags wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 

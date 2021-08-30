@@ -55,6 +55,23 @@
             "MIMode": "lldb"
         },
         {
+            "name": "demo (win)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/src/vkd-app.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake",
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
             "name": "tests (mac 2)",
             "type": "cppdbg",
             "request": "launch",
@@ -66,6 +83,5 @@
             "externalConsole": false,
             "MIMode": "lldb"
         }
-        
     ]
 }
