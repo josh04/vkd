@@ -1,0 +1,29 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    float saturation;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    vec4 inp = imageLoad(inputTex, coord);
+    vec4 inp2;
+    float isat = 1.0 - push.saturation;
+    vec4 weights = vec4(0.2126, 0.7152, 0.0722, 1.0);
+    inp2.x = (isat*weights.x + push.saturation) * inp.x + (isat * weights.y) * inp.y + (isat * weights.z) * inp.z;
+    inp2.y = (isat*weights.x) * inp.x + (isat * weights.y + push.saturation) * inp.y + (isat * weights.z) * inp.z;
+    inp2.z = (isat*weights.x) * inp.x + (isat * weights.y) * inp.y + (isat * weights.z + push.saturation) * inp.z;
+    inp2.w = inp.w;
+
+    imageStore(outputTex, coord, inp2);
+}

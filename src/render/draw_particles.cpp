@@ -51,11 +51,11 @@ namespace vkd {
 
     void DrawParticles::inputs(const std::vector<std::shared_ptr<EngineNode>>& in) {
         if (in.size() < 1) {
-            throw std::runtime_error("DrawParticles requires more than one input");
+            throw GraphException("DrawParticles requires more than one input");
         }
         _compute_particles = std::dynamic_pointer_cast<Particles>(in[0]);
         if (!_compute_particles) {
-            throw std::runtime_error("DrawParticles requires passing a Particles node as inputmore than one inputmore than one input");
+            throw GraphException("DrawParticles requires passing a Particles node as inputmore than one inputmore than one input");
         }
     }
 
@@ -114,7 +114,7 @@ namespace vkd {
         vkCmdDraw(buf, PARTICLE_COUNT, 1, 0, 0);
     }
 
-    void DrawParticles::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void DrawParticles::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
 
     }
 }

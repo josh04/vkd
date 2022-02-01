@@ -11,6 +11,7 @@
 #include "vertex_input.hpp"
 #include "viewport_and_scissor.hpp"
 #include "sampler.hpp"
+#include "image.hpp"
 
 namespace vkd {
     REGISTER_NODE("draw", "draw", DrawFullscreen);
@@ -85,6 +86,9 @@ namespace vkd {
     }
 
     void DrawFullscreen::commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {
+        if (!(_image_node->get_output_image() && _image_node->get_output_image()->allocated())) {
+            return;
+        }
         if (!_desc_set) {
             _desc_set = std::make_shared<DescriptorSet>(_device, _desc_set_layout, _desc_pool);
             _desc_set->add_image(*_image_node->get_output_image(), _sampler);
@@ -110,6 +114,9 @@ namespace vkd {
         }
 
         viewport_and_scissor_with_offset(buf, offx, offy, vw, vh, width, height);
+
+        _offset_w_h = {offx, offy, vw, vh};
+        
         _pipeline->bind(buf, _desc_set->get());
 
         // Bind triangle vertex buffer (contains position and colors)
@@ -124,7 +131,8 @@ namespace vkd {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawFullscreen::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
-        submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
+    void DrawFullscreen::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
     }
+
 }

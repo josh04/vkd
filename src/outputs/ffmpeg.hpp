@@ -20,6 +20,8 @@ namespace vkd {
     class StagingBuffer;
     class StorageBuffer;
     struct Frame;
+    class ImageDownloader;
+    class ImageNode;
 
     class FfmpegOutput : public EngineNode {
     public:
@@ -36,7 +38,7 @@ namespace vkd {
         };
 
         static int32_t input_count() { return 1; }
-        static int32_t output_count() { return 1; }
+        static int32_t output_count() { return 0; }
         static bool input_valid(int32_t input, const std::set<std::string>& tags) { return true; }
         static std::set<std::string> tags() { return {"ffmpeg_output"}; }
 
@@ -44,16 +46,11 @@ namespace vkd {
             if (in.size() < 1) {
                 throw GraphException("Input required");
             }
-            auto conv = std::dynamic_pointer_cast<HostBufferNode>(in[0]);
+            auto conv = std::dynamic_pointer_cast<ImageNode>(in[0]);
             if (!conv) {
                 throw GraphException("Invalid input");
             }
-            auto conv2 = std::dynamic_pointer_cast<HostImageNode>(in[0]);
-            if (!conv2) {
-                throw GraphException("Invalid input");
-            }
             _buffer_node = conv;
-            _buffer_node_sz = conv2;
         }
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<FfmpegOutput>(); }
         
@@ -61,11 +58,11 @@ namespace vkd {
         void post_init() override;
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
 
         void finish() override;
 
-        VkSemaphore wait_prerender() const override { return VK_NULL_HANDLE; }
+        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
     private:
         int32_t _width = 1, _height = 1;
 
@@ -78,11 +75,15 @@ namespace vkd {
         AVStream * _video_stream = nullptr;
         AVCodec * _codec = NULL;
 
+        std::unique_ptr<ImageDownloader> _downloader = nullptr;
+
         std::shared_ptr<ParameterInterface> _path_param = nullptr;
 
-        std::shared_ptr<HostBufferNode> _buffer_node = nullptr;
-        std::shared_ptr<HostImageNode> _buffer_node_sz = nullptr;
+        std::shared_ptr<ImageNode> _buffer_node = nullptr;
 
         FencePtr _fence = nullptr;
+
+        VkCommandBuffer _compute_command_buffer;
+        SemaphorePtr _compute_complete;
     };
 }

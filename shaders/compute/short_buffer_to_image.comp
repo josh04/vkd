@@ -1,0 +1,32 @@
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(std430, binding = 0) buffer Buf 
+{
+   uint image[];
+};
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    float vkd_shortmax;
+} push;
+
+vec4 ushort_to_float(uvec4 i) {
+    return vec4(float(i.x) / push.vkd_shortmax, float(i.y) / push.vkd_shortmax, float(i.z) / push.vkd_shortmax, float(i.w) / push.vkd_shortmax);
+}
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 dim = imageSize(outputTex);
+
+    uint i = image[(coord.y * dim.x + coord.x)*2];
+    uint i2 = image[(coord.y * dim.x + coord.x)*2 + 1];
+
+    vec4 vals = ushort_to_float(uvec4((i >> 16) & 0xFF, i & 0xFF, (i2 >> 16) & 0xFF, i2 & 0xFF));
+
+    imageStore(outputTex, coord, vals);
+}

@@ -19,7 +19,12 @@ namespace vkd {
     class FakeNode : public std::enable_shared_from_this<FakeNode> {
     public:
         FakeNode(int32_t ui_id, std::string node_name, std::string node_type) 
-            : _node_name(std::to_string(ui_id) + "_" + node_name), _node_type(node_type), _ui_id(ui_id) {}
+            : _node_name(std::to_string(ui_id) + "_" + node_name), _node_type(node_type), _ui_id(ui_id) {
+            if (node_type == "display") {
+                throw std::runtime_error("display node had fakenode created.");
+            }
+
+        }
         ~FakeNode() = default;
         FakeNode(FakeNode&&) = delete;
         FakeNode(const FakeNode&) = delete;
@@ -35,10 +40,10 @@ namespace vkd {
         void init() {}
         void ui() {}
 
-        VkSemaphore wait_prerender() const { return VK_NULL_HANDLE; }
+        const SemaphorePtr& wait_prerender() const { return VK_NULL_HANDLE; }
         bool update(ExecutionType type) { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {}
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {}
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {}
 
         std::shared_ptr<EngineNode> real_node() const { return _real_node; }
         void real_node(std::shared_ptr<EngineNode> node);
@@ -80,6 +85,9 @@ namespace vkd {
 
         void set_range(const FrameRange& range) { _range = range; }
         auto range() const { return _range; }
+
+        const std::string& saved_as() const { return _saved_as; }
+        void set_saved_as(const std::string& name) { _saved_as = name; }
     private:
         void add_output(FakeNodePtr node);
         int32_t _ui_id;
@@ -87,11 +95,12 @@ namespace vkd {
         std::string _node_name;
         std::string _node_type;
         std::vector<FakeNodePtr> _inputs;
-        std::vector<FakeNodePtr> _outputs;
+        std::vector<std::weak_ptr<FakeNode>> _outputs;
         
         std::shared_ptr<EngineNode> _real_node = nullptr;
         ShaderParamMap _param_map;
         FrameRange _range;
+        std::string _saved_as;
     };
 
     class GraphBuilder {

@@ -27,10 +27,10 @@ namespace vkd {
         void post_init() override;
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
 
         //Buffer& storage_buffer() { return *_compute_storage_buffer; }
-        VkSemaphore wait_prerender() const override { return _compute_complete; }
+        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
         auto compute_complete() const { return _compute_complete; }
         std::shared_ptr<Image> get_output_image() const override { return _image; }
     private:
@@ -40,6 +40,6 @@ namespace vkd {
         std::shared_ptr<Image> _image = nullptr;
 
         VkCommandBuffer _compute_command_buffer;
-        VkSemaphore _compute_complete;
+        SemaphorePtr _compute_complete;
     };
 }

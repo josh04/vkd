@@ -36,13 +36,13 @@ namespace vkd {
        half_window->as<int>().min(1);
        half_window->as<int>().max(200);
 
-        _compute_complete = create_semaphore(_device->logical_device());
+        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
 
         _image = std::make_shared<vkd::Image>(_device);
-        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
         _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
@@ -52,7 +52,6 @@ namespace vkd {
 
         _blur->set_arg(0, image);
         _blur->set_arg(1, _image);
-        _blur->update();
     }
 
     void Bilateral::post_init()
@@ -78,7 +77,7 @@ namespace vkd {
         return update;
     }
 
-    void Bilateral::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
-        submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Bilateral::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

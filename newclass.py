@@ -1,8 +1,8 @@
 import sys
 import os.path
 
-def write_header(path, classname):
-    filename = path + classname.lower() + '.hpp'
+def write_header(path, snakename, classname):
+    filename = path + snakename.lower() + '.hpp'
     if not os.path.isfile(filename):
         header = open(filename, 'w')
         header.write("""#pragma once
@@ -24,8 +24,8 @@ namespace vkd {
     else:
         print("header already exists at " +filename)
     
-def write_impl(path, classname):
-    filename = path + classname.lower() + '.cpp'
+def write_impl(path, snakename, classname):
+    filename = path + snakename.lower() + '.cpp'
     if not os.path.isfile(filename):
         header = open(filename, 'w')
         header.write("""#include \"""" + classname.lower() + """.hpp"
@@ -37,5 +37,8 @@ namespace vkd {
     else:
         print("impl already exists at " +filename)
     
-write_header("./", sys.argv[1])
-write_impl("./", sys.argv[1])
+
+temp = sys.argv[1].split('_')
+clname = ''.join(ele.title() for ele in temp[0:])
+write_header("./", sys.argv[1], clname)
+write_impl("./", sys.argv[1], clname)

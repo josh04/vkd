@@ -1,0 +1,46 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+
+float lin_to_aces_cct(float x) {  
+    const float X_BRK = 0.0078125;
+    const float Y_BRK = 0.155251141552511;
+    const float A = 10.5402377416545;
+    const float B = 0.0729055341958355;
+
+    if (x <= X_BRK) {
+        return A * x + B;
+    } else {// (x > X_BRK)
+        return (log2(x) + 9.72) / 17.52;
+    }
+}
+
+vec4 lin_to_aces_cct(vec4 xyzw) {
+    return vec4(lin_to_aces_cct(xyzw.x), lin_to_aces_cct(xyzw.y), lin_to_aces_cct(xyzw.z), xyzw.w);
+}
+
+void main() 
+{
+    const float ymin = 0.0001;
+    const float ymax = 4.0;
+
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    vec4 inp = imageLoad(inputTex, coord);
+    vec4 linp = max(inp, vec4(0.0));
+
+    //vec4 llp = ymax * log(max(inp - ymin, ymin)) / log(ymax - ymin);
+    vec4 llp = lin_to_aces_cct(linp);
+
+    imageStore(outputTex, coord, vec4(llp.xyz, inp.w));
+}

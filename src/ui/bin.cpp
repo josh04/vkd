@@ -1,21 +1,22 @@
 #include "bin.hpp"
-
+#include "application.hpp"
+#include "main_ui.hpp"
 #include "cereal/cereal.hpp"
 
 CEREAL_CLASS_VERSION(vkd::Bin::Entry, 0);
 CEREAL_CLASS_VERSION(vkd::Bin, 0);
 
 namespace vkd {
-    void Bin::draw() {
+    void Bin::draw(MainUI& ui) {
 
-        ImGui::SetNextWindowPos(ImVec2(400, 30), ImGuiCond_Once);
+        ImGui::SetNextWindowPos(ImVec2(30, 60), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_Once);
 
         ImGui::Begin("project");
 
         if (ImGui::BeginListBox("##items", {-FLT_MIN, -30})) {
             int i = 0;
-            if (ImGui::Selectable("(empty)", _selected == i)) {
+            if (ImGui::Selectable("(new empty sequence)", _selected == i)) {
                 if (_selected == i) {
                     _selected = -1;
                 } else {
@@ -36,6 +37,13 @@ namespace vkd {
                         _selected = i;
                     }
                 }
+
+                //if (Mode() == ApplicationMode::Photo) {
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+                        ui.add_node_graph(item);
+                    }
+                //}
+
                 if (ImGui::BeginDragDropSource())
                 {
                     auto iptr = &item;

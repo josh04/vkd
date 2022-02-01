@@ -1,0 +1,39 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    vec3 slope;
+    float slope_master;
+    vec3 offset;
+    float offset_master;
+    vec3 power;
+    float power_master;
+    float saturation;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    vec4 inp = imageLoad(inputTex, coord);
+
+    float r = pow(max((inp.x * (push.slope_master + push.slope.x)) + (push.offset_master + push.offset.x), 0.0), push.power_master + push.power.x);
+    float g = pow(max((inp.y * (push.slope_master + push.slope.y)) + (push.offset_master + push.offset.y), 0.0), push.power_master + push.power.y);
+    float b = pow(max((inp.z * (push.slope_master + push.slope.z)) + (push.offset_master + push.offset.z), 0.0), push.power_master + push.power.z);
+    
+    vec4 weights = vec4(0.2126, 0.7152, 0.0722, 0.0);
+    vec4 rgb = vec4(r, g, b, 1.0);
+    float luma = dot(weights, rgb);
+    vec4 lumas = vec4(luma, luma, luma, inp.w);
+
+    vec4 inp2 = lumas + vec4(push.saturation, push.saturation, push.saturation, 0.0) * (rgb - lumas);
+
+    imageStore(outputTex, coord, inp2);
+}

@@ -8,8 +8,10 @@ set(IMGUI_SOURCE
     imnodes.cpp
     ImSequencer.cpp
     imgui_impl_vulkan.cpp
+    ImGuiColorTextEdit/TextEditor.cpp
 )
 
 add_library(imgui STATIC ${IMGUI_SOURCE})
 target_link_libraries(imgui PUBLIC Vulkan::Vulkan)
 target_include_directories(imgui PUBLIC ..)
+target_include_directories(imgui PRIVATE .)

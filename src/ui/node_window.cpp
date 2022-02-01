@@ -23,6 +23,8 @@
 
 #include "timeline.hpp"
 
+#include "inspector.hpp"
+
 #include <set>
 #include <vector>
 #include <algorithm>
@@ -30,11 +32,15 @@
 
 #include "cereal/cereal.hpp"
 
+#include "outputs/immediate_exr.hpp"
+
+#include "imgui/ImGuiColorTextEdit/TextEditor.h"
+
 CEREAL_CLASS_VERSION(ImVec2, 0);
-CEREAL_CLASS_VERSION(vkd::NodeWindow, 1);
-CEREAL_CLASS_VERSION(vkd::NodeWindow::Node, 0);
+CEREAL_CLASS_VERSION(vkd::NodeWindow, 0);
+CEREAL_CLASS_VERSION(vkd::NodeWindow::Node, 1);
 CEREAL_CLASS_VERSION(vkd::NodeWindow::Link, 0);
-CEREAL_CLASS_VERSION(vkd::SerialiseGraph, 0);
+CEREAL_CLASS_VERSION(vkd::SerialiseGraph, 3);
 
 template<class Archive>
 void serialize(Archive & archive, ImVec2& vec, const uint32_t version) {
@@ -57,16 +63,18 @@ namespace vkd {
         imnodes::IO& io = imnodes::GetIO();
         io.link_detach_with_modifier_click.modifier = &_remove_link_mode;
 
+        _imnodes_context = imnodes::EditorContextCreate();
+
+        imnodes::EditorContextSet(_imnodes_context);
         _display_node = _add_node("display");
 
         _file_dialog.SetTitle("ffmpeg picker");
-        _file_dialog.SetTypeFilters({ ".mp4", ".mkv" });
+        _file_dialog.SetTypeFilters({ ".mp4", ".mkv", ".exr", ".RAF" });
 
         _sequencer_line = std::make_shared<SequencerLine>();
 
         _sequencer_line->name = "empty";
         
-        _imnodes_context = imnodes::EditorContextCreate();
     }
 
     NodeWindow::~NodeWindow() {
@@ -86,7 +94,7 @@ namespace vkd {
         }
 
         ShaderParamMap& map = search->second.node->params();
-        map["_"]["path"] = make_param<ParameterType::p_string>(search->second.name, "path", 0);
+        map["_"]["path"] = make_param<ParameterType::p_string>(search->second.type, "path", 0);
         map["_"]["path"]->as<std::string>().set(entry.path);
         
         _sequencer_line->name = entry.path;
@@ -95,7 +103,7 @@ namespace vkd {
     void NodeWindow::sequencer_size_to_loaded_content() {
         int64_t total_frame_count = 100;
         for (auto&& node : _nodes) {
-            if (node.second.name == "ffmpeg") {
+            if (node.second.type == "ffmpeg") {
                 total_frame_count = std::max(total_frame_count, (int64_t)node.second.node->params().at("_").at("_total_frame_count")->as<int>().get());
             }
         }
@@ -103,7 +111,7 @@ namespace vkd {
         _sequencer_line->frame_count = total_frame_count;
     }
 
-    void NodeWindow::draw(bool& updated) {
+    void NodeWindow::draw(bool& updated, Inspector& insp) {
         ImGuiIO& io = ImGui::GetIO();
         
         ImGui::SetNextWindowPos(ImVec2(600, 25), ImGuiCond_Once);
@@ -118,12 +126,12 @@ namespace vkd {
         std::set<std::string> blacklist = {"draw"};
 
         for (auto&& node : nodemap) {
-            if (blacklist.find(node.second.name) != blacklist.end()) {
+            if (blacklist.find(node.second.type) != blacklist.end()) {
                 continue;
             }
             ImGui::SameLine();
             if (ImGui::Button(node.second.display_name.c_str())) {
-                _add_node(node.second.name.c_str());
+                _add_node(node.second.type.c_str());
             }
         }
 
@@ -136,7 +144,7 @@ namespace vkd {
         for (auto&& node : _nodes) {
 
             if (node.second.node && node.second.node->get_state() == UINodeState::error) {
-                imnodes::PushColorStyle(imnodes::ColorStyle_TitleBar, IM_COL32(122, 74, 41, 255));
+                imnodes::PushColorStyle(imnodes::ColorStyle_TitleBar, IM_COL32(166, 0, 22, 255));
                 imnodes::PushColorStyle(imnodes::ColorStyle_TitleBarHovered, IM_COL32(250, 150, 66, 255));
                 imnodes::PushColorStyle(imnodes::ColorStyle_TitleBarSelected, IM_COL32(250, 150, 66, 255));
             }
@@ -152,7 +160,22 @@ namespace vkd {
             imnodes::EndNodeTitleBar();
 
             int i = 0;
+            bool lastEmpty = false;
             for (auto pin : node.second.inputs) {
+                if (node.second.extendable_inputs) {
+                    auto search = node.second.inPinToLink.find(pin);
+                    if (search == node.second.inPinToLink.end()) {
+                        // either there are no links or we're one past the last connected link, either way don't show
+                        if ((node.second.inPinToLink.empty() || node.second.inPinToLink.rbegin()->first < pin) && lastEmpty) {
+                            ++i;
+                            continue;
+                        }
+                        lastEmpty = true;
+                    } else {
+                        lastEmpty = false;
+                    }
+                }
+
                 imnodes::BeginInputAttribute(pin);
                 // in between Begin|EndAttribute calls, you can call ImGui
                 // UI functions
@@ -198,8 +221,8 @@ namespace vkd {
         if (imnodes::IsNodeHovered(&node_id) && io.MouseClicked[2] && node_id != _display_node) {
             auto&& search = _nodes.find(node_id);
             if (search != _nodes.end()) {
-                for (auto&& link : search->second.links) {
-                    _links.erase(link);
+                for (auto&& link : search->second.linkToPin) {
+                    _remove_link(link.first);
                 }
                 for (auto&& pin : search->second.inputs) {
                     _pin_to_node.erase(pin);
@@ -220,9 +243,11 @@ namespace vkd {
         
         ImGui::End();
 
+        decltype(_open_node_windows) nodes_to_focus;
         int32_t hovered_node = -1;
         if (ImGui::IsMouseDoubleClicked(0) && imnodes::IsNodeHovered(&hovered_node)) {
             _open_node_windows.insert(hovered_node);
+            nodes_to_focus.insert(hovered_node);
         }
         
         ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(50, 50, 50, 255)); // stole this col from nodes
@@ -246,9 +271,20 @@ namespace vkd {
                         for (auto&& map : param_map) {
                             tot += map.second.size();
                         }
+                        tot = 30*tot;
+                        
+                        auto real_image_node = std::dynamic_pointer_cast<ImageNode>(fake_node->real_node());
+                        if (real_image_node && real_image_node->get_output_image()) {
+                            tot += (290 + 30);
+                        }
+
+                        if (nodes_to_focus.find(node_id) != nodes_to_focus.end()) {
+                            ImGui::SetNextWindowFocus();
+                        }
+
                         ImGui::SetNextWindowPos(ImVec2(400, 40), ImGuiCond_Once);
-                        ImGui::SetNextWindowSize(ImVec2(400, 20 + 30*tot), ImGuiCond_Once);
-                        std::string win_name = node.name + "###" + node.name + std::to_string(_id);
+                        ImGui::SetNextWindowSize(ImVec2(520, 20 + tot), ImGuiCond_Once);
+                        std::string win_name = node.display_name + "###" + std::to_string(node_id) + " " + std::to_string(_id);
                         ImGui::Begin(win_name.c_str(), &open);
                         if (!open) {
                             close_windows.insert(node_id);
@@ -257,24 +293,81 @@ namespace vkd {
 
 //void ImGui::Image(ImTextureID user_texture_id, const ImVec2& size, const ImVec2& uv0, const ImVec2& uv1, const ImVec4& tint_col, const ImVec4& border_col)
 
-                        if (fake_node->real_node()) {
-                            auto ptr = std::dynamic_pointer_cast<ImageNode>(fake_node->real_node());
-                            if (ptr && ptr->get_output_image()) {
-                                ImVec2 uv_min = ImVec2(0.0f, 0.0f);                 // Top-left
-                                ImVec2 uv_max = ImVec2(1.0f, 1.0f);                 // Lower-right
-                                ImVec4 tint_col = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);   // No tint
-                                ImVec4 border_col = ImVec4(1.0f, 1.0f, 1.0f, 0.5f); // 50% opaque white
-                                ImGui::Image(ptr->get_output_image()->ui_desc_set(), {480, 270}, uv_min, uv_max, tint_col, border_col);
+                        if (real_image_node && real_image_node->get_output_image()) {
+                            ImVec2 uv_min = ImVec2(0.0f, 0.0f);                 // Top-left
+                            ImVec2 uv_max = ImVec2(1.0f, 1.0f);                 // Lower-right
+                            ImVec4 tint_col = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);   // No tint
+                            ImVec4 border_col = ImVec4(1.0f, 1.0f, 1.0f, 0.5f); // 50% opaque white
+                            //ImGui::Image(real_image_node->get_output_image()->ui_desc_set(), {480, 270}, uv_min, uv_max, tint_col, border_col);
+
+                            std::unique_ptr<enki::TaskSet> task = nullptr;
+                            if (ImGui::Button("exr")) {
+                                auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), ImmediateFormat::EXR, real_image_node->get_output_image(), task);
+                                fake_node->set_saved_as(str);
                             }
+                            ImGui::SameLine();
+                            if (ImGui::Button("png")) {
+                                auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), ImmediateFormat::PNG, real_image_node->get_output_image(), task);
+                                fake_node->set_saved_as(str);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("jpg")) {
+                                auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), ImmediateFormat::JPG, real_image_node->get_output_image(), task);
+                                fake_node->set_saved_as(str);
+                            }
+
+                            if (task != nullptr) {
+                                _save_tasks.emplace_back(std::make_pair(node_id, std::move(task)));
+                            }
+
+                            bool unfin = false;
+                            int i = 0;
+                            int erase = -1;
+                            for (auto&& st : _save_tasks) {
+                                if (st.first == node_id) {
+                                    if (!st.second->GetIsComplete()) {
+                                        unfin = true;
+                                        break;
+                                    } else {
+                                        erase = i;
+                                    }
+                                }
+                                ++i;
+                            }
+                            if (erase >= 0) {
+                                _save_tasks.erase(_save_tasks.begin() + erase);
+                            }
+
+                            if (unfin) {
+                                ImGui::SameLine();
+                                ImGui::Text("saving...");
+                            } else if (!fake_node->saved_as().empty()) {
+                                ImGui::SameLine();
+                                ImGui::Text("saved as %s", fake_node->saved_as().c_str());
+                            }
+                        }
+
+                        auto search_editor = _open_text_editors.find(node_id);
+
+                        if (search_editor == _open_text_editors.end()) {
+                            _open_text_editors[node_id] = nullptr;
                         }
                         
                         for (auto&& map : param_map) {
+                            std::vector<std::pair<int, vkd::ParameterInterface*>> params_to_draw;
+                            
                             for (auto&& param : map.second) {
                                 if (param.first.substr(0, 1) != "_" && param.first.substr(0, 4) != "vkd_") {
-                                    bool changed = _ui_for_param(param.second);
-                                    if (changed && fake_node->get_state() == UINodeState::error) {
-                                        updated = true;
-                                    }
+                                    params_to_draw.emplace_back(std::make_pair(param.second->order(), param.second.get()));
+                                }
+                            }
+
+                            std::sort(params_to_draw.begin(), params_to_draw.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+
+                            for (auto&& pair : params_to_draw) {
+                                bool changed = _ui_for_param(*pair.second, insp, _open_text_editors[node_id]);
+                                if (changed && fake_node->get_state() == UINodeState::error) {
+                                    updated = true;
                                 }
                             }
                         }
@@ -312,14 +405,16 @@ namespace vkd {
             if (search_start != _pin_to_node.end()) {
                 auto start_node = _nodes.find(search_start->second);
                 if (start_node != _nodes.end()) {
-                    start_node->second.links.erase(std::remove(start_node->second.links.begin(), start_node->second.links.end(), link), start_node->second.links.end());
+                    start_node->second.linkToPin.erase(link);
+                    start_node->second.outPinToLinks[linke->second.start].erase(link);
                 }
             }
             auto search_end = _pin_to_node.find(linke->second.end);
             if (search_end != _pin_to_node.end()) {
                 auto end_node = _nodes.find(search_end->second);
                 if (end_node != _nodes.end()) {
-                    end_node->second.links.erase(std::remove(end_node->second.links.begin(), end_node->second.links.end(), link), end_node->second.links.end());
+                    end_node->second.linkToPin.erase(link);
+                    end_node->second.inPinToLink.erase(linke->second.end);
                 }
             }
         }
@@ -333,16 +428,22 @@ namespace vkd {
         if (node_s != _pin_to_node.end()) {
             auto node = _nodes.find(node_s->second);
             if (node != _nodes.end()) {
-                node->second.links.push_back(_next_link);
+                node->second.linkToPin[_next_link] = start;
+                node->second.outPinToLinks[start].insert(_next_link);
             }
         }
         auto node_e = _pin_to_node.find(end);
         if (node_e != _pin_to_node.end()) {
             auto node = _nodes.find(node_e->second);
             if (node != _nodes.end()) {
-                node->second.links.push_back(_next_link);
+                auto currentLink = node->second.inPinToLink.find(end);
+                if (currentLink != node->second.inPinToLink.end()) {
+                    _remove_link(currentLink->second);
+                }
+                node->second.linkToPin[_next_link] = end;
+                node->second.inPinToLink[end] = _next_link;
                 if (node->second.extendable_inputs) {
-                    if (node->second.links.size() == node->second.inputs.size()) {
+                    if (node->second.inPinToLink.size() == node->second.inputs.size()) {
                         int32_t np = next_pin_();
                         node->second.inputs.insert(np);
                         _pin_to_node[np] = node->first;
@@ -359,19 +460,19 @@ namespace vkd {
     void NodeWindow::add_node_(Node& node) {
         node.inputs = _pins(N::input_count());
         node.outputs = _pins(N::output_count());
-        node.node = vkd::make(node.name);
+        node.node = vkd::make(node.type);
     }
 */
     int32_t NodeWindow::_add_node(std::string node_type) {
         Node node{};
-        node.name = node_type;
+        node.type = node_type;
 
 
         auto&& nodemap = vkd::EngineNode::node_type_map();
         auto search = nodemap.find(node_type);
         if (search != nodemap.end()) {
             node.extendable_inputs = false;
-            node.name = search->second.name;
+            node.type = search->second.type;
             node.display_name = search->second.display_name;
             if (search->second.inputs == -1) {
                 node.inputs = _pins(1);
@@ -412,8 +513,28 @@ namespace vkd {
             _next_node_loc.y = ((int)(_next_node_loc.y + 20) % 500);
         }
 
-        if (_last_added_node_output != -1 && node.inputs.size() > 0) {
+        bool added_link = false;
+        int selected_node_count = imnodes::NumSelectedNodes(); 
+        if (selected_node_count) { // node is selected in window
+            std::vector<int> selected_nodes(selected_node_count);
+            imnodes::GetSelectedNodes(selected_nodes.data());
+
+            auto search = _nodes.find(selected_nodes[0]);
+            if (search != _nodes.end()) {
+                for (auto&& o : search->second.outputs) {
+                    auto search_l = search->second.outPinToLinks.find(o);
+                    if (search_l == search->second.outPinToLinks.end()) {
+                        _add_link(o, *node.inputs.begin());
+                        added_link = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!added_link && _last_added_node_output != -1 && node.inputs.size() > 0) {
             _add_link(_last_added_node_output, *node.inputs.begin());
+            added_link = true;
         }
 
         if (node.outputs.size() > 0) {
@@ -474,8 +595,8 @@ namespace vkd {
                     //std::cout << "inited " << ptr << std::endl;
                 }
 
-                for (auto&& link : node.links) {
-                    auto searchl = _links.find(link);
+                for (auto&& link : node.linkToPin) {
+                    auto searchl = _links.find(link.first);
                     if (searchl != _links.end()) {
                         auto search = node.inputs.find(searchl->second.end);
                         if (search != node.inputs.end()) {
@@ -522,9 +643,8 @@ namespace vkd {
 
     }
 
-    bool NodeWindow::_ui_for_param(const std::shared_ptr<vkd::ParameterInterface>& paramPtr) {
-        ImGui::PushID(paramPtr.get());
-        auto&& param = *paramPtr;
+    bool NodeWindow::_ui_for_param(vkd::ParameterInterface& param, Inspector& insp, std::unique_ptr<TextEditor>& editor) {
+        ImGui::PushID(&param);
         auto&& name = param.name();
         auto type = param.type();
         bool changed = false;
@@ -532,6 +652,11 @@ namespace vkd {
         switch (type) {
         case ParameterType::p_float:
         {
+            if (param.ui_changed_last_tick()) {
+                param.ui_changed_last_tick() = false;
+                break;
+            }
+
             float p = param.as<float>().get();
             float min = param.as<float>().min();
             float max = param.as<float>().max();
@@ -540,16 +665,42 @@ namespace vkd {
                 param.as<float>().set(p);
                 changed = true;
             }
+            
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+            {
+                param.as<float>().set(param.as<float>().get_default());
+                param.ui_changed_last_tick() = true;
+                changed = true;
+            }
+            
             break;
         }
         case ParameterType::p_int:
         {
             int p = param.as<int>().get();
-            int min = param.as<int>().min();
-            int max = param.as<int>().max();
-            if (ImGui::SliderInt(name.c_str(), &p, min, max)) {
-                param.as<int>().set(p);
-                changed = true;
+            auto&& tags = param.tags();
+            if (tags.find("enum") != tags.end()) {
+                auto&& enums = param.enum_names();
+                p = std::clamp(p, 0, (int)enums.size() - 1);
+                if (ImGui::BeginCombo(name.c_str(), enums[p].c_str())) {
+                    for (int i = 0; i < enums.size(); ++i) {
+                        auto&& name = enums[i];
+                        bool is_selected = (p == i);
+                        if (ImGui::Selectable(name.c_str(), is_selected)) {
+                            param.as<int>().set(i);
+                        }
+                        if (is_selected) {
+                            ImGui::SetItemDefaultFocus(); 
+                        }
+                    }
+                }
+            } else {
+                int min = param.as<int>().min();
+                int max = param.as<int>().max();
+                if (ImGui::SliderInt(name.c_str(), &p, min, max)) {
+                    param.as<int>().set(p);
+                    changed = true;
+                }
             }
             break;
         }
@@ -561,6 +712,23 @@ namespace vkd {
             if (ImGui::SliderInt(name.c_str(), (int*)&p, min, max)) {
                 param.as<unsigned int>().set(p);
                 changed = true;
+            }
+            break;
+        }
+        case ParameterType::p_bool:
+        {
+            bool p = param.as<bool>().get();
+            auto&& tags = param.tags();
+            if (tags.find("button") != tags.end()) {
+                if (ImGui::Button(name.c_str())) {
+                    param.as<bool>().set(true);
+                    changed = true;
+                }
+            } else {
+                if (ImGui::Checkbox(name.c_str(), (bool*)&p)) {
+                    param.as<bool>().set(p);
+                    changed = true;
+                }
             }
             break;
         }
@@ -577,21 +745,109 @@ namespace vkd {
         }
         case ParameterType::p_vec4:
         {
+            auto&& tags = param.tags();
             glm::vec4 p = param.as<glm::vec4>().get();
-            if (ImGui::InputFloat4(name.c_str(), (float*)&p)) {
-                param.as<glm::vec4>().set(p);
-                changed = true;
+            bool vec3 = tags.find("vec3") != tags.end();
+            if (tags.find("sliders") != tags.end()) {
+                
+                if (param.ui_changed_last_tick()) {
+                    param.ui_changed_last_tick() = false;
+                    break;
+                }
+
+                glm::vec4 min = param.as<glm::vec4>().min();
+                glm::vec4 max = param.as<glm::vec4>().max();
+                glm::vec4 def = param.as<glm::vec4>().get_default();
+
+
+                if (ImGui::SliderFloat((name + ".x").c_str(), &p.x, min.x, max.x)) {
+                    param.as<glm::vec4>().set(p);
+                    changed = true;
+                }
+                
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                {
+                    p.x = def.x;
+                    param.as<glm::vec4>().set(p);
+                    param.ui_changed_last_tick() = true;
+                    changed = true;
+                }
+
+                if (ImGui::SliderFloat((name + ".y").c_str(), &p.y, min.y, max.y)) {
+                    param.as<glm::vec4>().set(p);
+                    changed = true;
+                }
+                
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                {
+                    p.y = def.y;
+                    param.as<glm::vec4>().set(p);
+                    param.ui_changed_last_tick() = true;
+                    changed = true;
+                }
+
+                if (ImGui::SliderFloat((name + ".z").c_str(), &p.z, min.z, max.z)) {
+                    param.as<glm::vec4>().set(p);
+                    changed = true;
+                }
+                
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                {
+                    p.z = def.z;
+                    param.as<glm::vec4>().set(p);
+                    param.ui_changed_last_tick() = true;
+                    changed = true;
+                }
+                if (!vec3) {
+                    if (ImGui::SliderFloat((name + ".w").c_str(), &p.w, min.w, max.w)) {
+                        param.as<glm::vec4>().set(p);
+                        changed = true;
+                    }
+                    
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                    {
+                        p.w = def.w;
+                        param.as<glm::vec4>().set(p);
+                        param.ui_changed_last_tick() = true;
+                        changed = true;
+                    }
+                }
+            } else if (tags.find("label") != tags.end()) {
+                if (tags.find("rgba") != tags.end()) {
+                    ImGui::Text("%s r: %f g: %f b: %f a: %f", name.c_str(), p.x, p.y, p.z, p.w);
+                } else {
+                    ImGui::Text("%s x: %f y: %f z: %f w: %f", name.c_str(), p.x, p.y, p.z, p.w);
+                }
+            } else {
+                if (!vec3) {
+                    if (ImGui::InputFloat4(name.c_str(), (float*)&p)) {
+                        param.as<glm::vec4>().set(p);
+                        changed = true;
+                    }
+                } else {
+                    if (ImGui::InputFloat3(name.c_str(), (float*)&p)) {
+                        param.as<glm::vec4>().set(p);
+                        changed = true;
+                    }
+                }
             }
             break;
         }
         case ParameterType::p_ivec2:
         {
-            glm::ivec2 p = param.as<glm::ivec2>().get();
-            glm::ivec2 min = param.as<glm::ivec2>().min();
-            glm::ivec2 max = param.as<glm::ivec2>().max();
-            if (ImGui::SliderInt2(name.c_str(), (int*)&p, min.x, max.x)) {
-                param.as<glm::ivec2>().set(p);
-                changed = true;
+            auto&& tags = param.tags();
+            if (tags.find("picker") != tags.end()) {
+                if (ImGui::Button(param.name().c_str())) {
+                    insp.set_current_parameter(param.as_ptr<glm::ivec2>());
+                }
+            } else {
+                glm::ivec2 p = param.as<glm::ivec2>().get();
+                glm::ivec2 min = param.as<glm::ivec2>().min();
+                glm::ivec2 max = param.as<glm::ivec2>().max();
+                if (ImGui::SliderInt2(name.c_str(), (int*)&p, min.x, max.x)) {
+                    param.as<glm::ivec2>().set(p);
+                    changed = true;
+                }
             }
             break;
         }
@@ -634,7 +890,20 @@ namespace vkd {
                 if (ImGui::Button("open")) {
                     _file_dialog.Open();
                 }
-                _file_dialog_param = paramPtr;
+                _file_dialog_param = param.shared_from_this();
+            } else if (tags.find("multiline") != tags.end()) {
+                ImGui::TextWrapped("%s", p.c_str());
+            } else if (tags.find("code") != tags.end()) {
+                if (editor == nullptr) {
+                    editor = std::make_unique<TextEditor>();
+                    // set highlight or whatever here
+	                auto lang = TextEditor::LanguageDefinition::GLSL();
+                    editor->SetLanguageDefinition(lang);
+                    editor->SetText(p);
+                }
+                editor->Render("Custom Kernel", {0, -20});
+                param.as<std::string>().set(editor->GetText());
+
             } else {
                 char pathc[1024];
                 strncpy(pathc, p.c_str(), std::min((size_t)1024, p.size()+1));
@@ -689,10 +958,59 @@ namespace vkd {
         _open_node_windows = data._open_node_windows;
         //save_map = save_map;
 
+        bool rebuildLinks = false;
+
         for (auto&& node : _nodes) {
             _next_node = std::max(_next_node, node.first + 1);
-            node.second.node = std::make_shared<vkd::FakeNode>(node.first, node.second.display_name, node.second.name);
+            if (node.second.type != "display") {
+                node.second.node = std::make_shared<vkd::FakeNode>(node.first, node.second.display_name, node.second.type);
+
+                auto search = data.save_map.find(node.first);
+                if (search != data.save_map.end()) {
+                    node.second.node->set_params(search->second);
+                }
+            }
+            rebuildLinks = rebuildLinks || node.second.rebuildLinks;
             node.second.node->init();
+        }
+
+        if (rebuildLinks) {
+            for (auto&& link : _links) {
+                auto findStart = _pin_to_node.find(link.second.start);
+                auto findEnd = _pin_to_node.find(link.second.end);
+                if (findStart != _pin_to_node.end()) {
+                    auto findSNode = _nodes.find(findStart->second);
+                    if (findSNode != _nodes.end()) {
+                        findSNode->second.linkToPin[link.first] = link.second.start;
+                        findSNode->second.outPinToLinks[link.second.start].insert(link.first);
+                    }
+                }
+                if (findEnd != _pin_to_node.end()) {
+                    auto findENode = _nodes.find(findEnd->second);
+                    if (findENode != _nodes.end()) {
+                        findENode->second.linkToPin[link.first] = link.second.end;
+                        findENode->second.inPinToLink[link.second.end] = link.first;
+                    }
+                }
+            }
+            
+            for (auto&& node : _nodes) {
+                node.second.extendable_inputs = false;
+                auto&& nodemap = vkd::EngineNode::node_type_map();
+                auto search = nodemap.find(node.second.type);
+                if (search != nodemap.end()) {
+                    if (search->second.inputs == -1) {
+                        node.second.extendable_inputs = true;
+                    }
+                } else if (node.second.type == "display") {
+                    node.second.extendable_inputs = true;
+                }
+            }
+        }
+
+        imnodes::EditorContextSet(_imnodes_context);
+        for (auto&& pos : data.node_positions) {
+            imnodes::SetNodeGridSpacePos(pos.first, pos.second);
         }
         for (auto&& link : _links) {
             _next_link = std::max(_next_link, link.first + 1);
@@ -710,14 +1028,15 @@ namespace vkd {
             throw std::runtime_error("NodeWindow bad version");
         }
         
-        std::map<std::string, vkd::ShaderParamMap> save_map;
+        SerialiseGraph data;
+
         for (auto&& node : _nodes) {
             if (node.second.node) {
-                save_map.emplace(node.second.name, node.second.node->params());
+                data.save_map.emplace(node.first, node.second.node->params());
             }
+            data.node_positions.emplace(node.first, imnodes::GetNodeGridSpacePos(node.first));
         }
 
-        SerialiseGraph data;
 
         data._id = _id;
         data._window_name = _window_name;
@@ -735,7 +1054,6 @@ namespace vkd {
         data._next_node_loc = _next_node_loc;
         data._last_added_node_output = _last_added_node_output;
         data._open_node_windows = _open_node_windows;
-        data.save_map = save_map;
 
         archive(data);
     }

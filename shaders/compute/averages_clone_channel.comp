@@ -1,0 +1,34 @@
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    int _channel;
+	uvec2 _offset;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 dim = imageSize(inputTex);
+    
+    vec4 lum = imageLoad(inputTex, coord + ivec2(push._offset));
+	
+    float l = 0.0;
+    if (push._channel == 0) {
+        l = lum.x;
+    } else if (push._channel == 1) {
+        l = lum.y;
+    } else if (push._channel == 2) {
+        l = lum.z;
+    } else if (push._channel == 3) {
+        l = lum.w;
+    }
+
+    imageStore(outputTex, coord, vec4(l, l, l, l));
+}

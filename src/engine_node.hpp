@@ -5,12 +5,22 @@
 #include <set>
 #include <map>
 #include "vulkan.hpp"
-#include "parameter.hpp"
 #include "graph_exception.hpp"
 
-#define REGISTER_NODE(A, B, C, ...) namespace{ EngineNodeRegister reg{A, B, C::input_count(), C::output_count(), std::make_shared<C>(__VA_ARGS__)}; }
+#include "engine_node_register.hpp"
+#include "parameter.hpp"
+#include "semaphore.hpp"
+
+#define DECLARE_NODE(INPUTS, OUTPUTS, TAG) \
+        static int32_t input_count() { return INPUTS; } \
+        static int32_t output_count() { return OUTPUTS; } \
+        static bool input_valid(int32_t input, const std::set<std::string>& tags) { return true; } \
+        static std::set<std::string> tags() { return {TAG}; }
+
 
 namespace vkd {
+
+    class ParameterInterface;
 
     enum class UINodeState {
         normal,
@@ -45,15 +55,6 @@ namespace vkd {
         }
     };
 
-    class EngineNodeRegister {
-    public:
-        EngineNodeRegister() = delete;
-
-        EngineNodeRegister(std::string name, std::string display_name, int32_t inputs, int32_t outputs, std::shared_ptr<EngineNode> clone);
-        ~EngineNodeRegister() = default;
-        EngineNodeRegister(EngineNodeRegister&&) {}
-        EngineNodeRegister(const EngineNodeRegister&) {}
-    };
     class Timeline;
     class ParameterInterface;
     class Kernel;
@@ -88,32 +89,33 @@ namespace vkd {
         }
 
         void register_params(Kernel& k);
+        void register_non_kernel_param(const std::shared_ptr<ParameterInterface>& param);
         void update_params(const ShaderParamMap& params);
 
         virtual void inputs(const std::vector<std::shared_ptr<EngineNode>>& in) = 0;
         virtual std::shared_ptr<EngineNode> clone() const = 0;
-        virtual VkSemaphore wait_prerender() const { return VK_NULL_HANDLE; }
+        virtual const SemaphorePtr& wait_prerender() const { return nullptr; }
 
         virtual void post_setup() {}
 
         virtual void init() = 0;
-        virtual void post_init() = 0;
+        virtual void post_init() {}
         virtual bool update(ExecutionType type) = 0;
         virtual void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) = 0;
-        virtual void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) = 0;
-        virtual void execute(ExecutionType type, VkSemaphore wait_semaphore) { execute(type, wait_semaphore, nullptr); };
+        virtual void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) = 0;
+        virtual void execute(ExecutionType type, const SemaphorePtr& wait_semaphore) { execute(type, wait_semaphore, nullptr); };
+        virtual void post_execute(ExecutionType type) {}
         virtual void ui() {};
         virtual void finish() {};
 
         void set_device(std::shared_ptr<Device> device) { _device = device; }
         void set_renderpass(std::shared_ptr<Renderpass> renderpass) { _renderpass = renderpass; }
         void set_pipeline_cache(std::shared_ptr<PipelineCache> pipeline_cache) { _pipeline_cache = pipeline_cache; }
-        void set_timeline(std::shared_ptr<Timeline> timeline) { _timeline = timeline; }
         void set_param_hash_name(const std::string& param_hash_name) { _param_hash_name = param_hash_name; }
         const auto& param_hash_name() const { return _param_hash_name; }
 
         struct NodeData {
-            std::string name;
+            std::string type;
             std::string display_name;
             std::shared_ptr<EngineNode> clone;
             int32_t inputs;
@@ -144,11 +146,18 @@ namespace vkd {
             inputs(input);
             _inputs = input; 
         }
+
+        const auto& device() const { return _device; }
+
+        auto output_count() const { return _output_count; }
+        void output_count(size_t c) { _output_count = c; }
+
+        virtual void allocate(VkCommandBuffer buf) {}
+        virtual void deallocate() {}
     protected:
         std::shared_ptr<Device> _device = nullptr;
         std::shared_ptr<Renderpass> _renderpass = nullptr;
         std::shared_ptr<PipelineCache> _pipeline_cache = nullptr;
-        std::shared_ptr<Timeline> _timeline = nullptr;
         ShaderParamMap _params;
 
         std::vector<std::shared_ptr<EngineNode>> _inputs;
@@ -162,8 +171,12 @@ namespace vkd {
         mutable Frame _last_frame;
         std::weak_ptr<FakeNode> _fake_node;
 
+        size_t _output_count = 0;
+
         const int64_t _hash = _next_hash++;
         static std::atomic_int64_t _next_hash;
 
     };
 }
+
+#include "make_param.hpp"

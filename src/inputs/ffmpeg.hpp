@@ -10,6 +10,9 @@
 #include "imgui/ImSequencer.h"
 #include "ui/timeline.hpp"
 
+#include "blockedit.hpp"
+#include "image_uploader.hpp"
+
 struct AVStream;
 struct AVCodecContext;
 struct AVFormatContext;
@@ -43,26 +46,21 @@ namespace vkd {
         void post_init() override;
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
 
-        VkSemaphore wait_prerender() const override { return _compute_complete; }
+        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
         auto compute_complete() const { return _compute_complete; }
-        std::shared_ptr<Image> get_output_image() const override { return _image; }
+        std::shared_ptr<Image> get_output_image() const override { return _uploader ? _uploader->get_gpu() : nullptr;; }
         float get_output_ratio() const override { return _width / (float)_height; }
     private:
         //std::string _path = "test.mp4";
 
         int32_t _width = 1, _height = 1;
 
-        std::shared_ptr<StagingBuffer> _staging_buffer = nullptr;
-        uint32_t * _staging_buffer_ptr = nullptr;
-        std::shared_ptr<StorageBuffer> _gpu_buffer = nullptr;
-        std::shared_ptr<Image> _image = nullptr;
-
-        std::shared_ptr<Kernel> _yuv420 = nullptr;
+        std::unique_ptr<ImageUploader> _uploader = nullptr;
 
         VkCommandBuffer _compute_command_buffer;
-        VkSemaphore _compute_complete;
+        SemaphorePtr _compute_complete;
 
         AVFormatContext * _format_context = nullptr;
         bool _decode_next_frame = true;
@@ -72,28 +70,6 @@ namespace vkd {
         std::shared_ptr<ParameterInterface> _path_param = nullptr;
         std::shared_ptr<ParameterInterface> _frame_param = nullptr;
         
-        struct BlockEditParams {
-            BlockEditParams() {}
-            BlockEditParams(ShaderParamMap& map, std::string hash);
-
-            Frame translate(const Frame& frame, bool clamp) {
-                auto fin_frame = frame;
-                Frame crs = content_relative_start->as<Frame>().get();
-                int64_t tot = total_frame_count->as<int>().get();
-
-                if (clamp) {
-                    fin_frame.index = std::clamp(frame.index + crs.index, (int64_t)0, tot);
-                } else {
-                    fin_frame.index = std::max(frame.index + crs.index, (int64_t)0);
-                }
-                return fin_frame;
-            }
-            std::shared_ptr<ParameterInterface> total_frame_count = nullptr;
-            std::shared_ptr<ParameterInterface> frame_start_block = nullptr;
-            std::shared_ptr<ParameterInterface> frame_end_block = nullptr;
-            std::shared_ptr<ParameterInterface> content_relative_start = nullptr;
-        };
-
         BlockEditParams _block;
 
         int64_t _frame_count = 0; // may not be available.

@@ -302,7 +302,7 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
         */
     }
 
-    void DrawUI::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void DrawUI::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
 
     }
 
@@ -319,14 +319,14 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
         auto staging = std::make_shared<vkd::StagingImage>(_device);
-        staging->create_image(VK_FORMAT_R8G8B8A8_UNORM, width, height);
+        staging->create_image(VK_FORMAT_R8G8B8A8_UNORM, {width, height});
 
         auto ptr = staging->map();
         memcpy(ptr, pixels, width * height * 4);
         staging->unmap();
 
         auto fontI = std::make_shared<vkd::Image>(_device);
-        fontI->create_image(VK_FORMAT_R8G8B8A8_UNORM, width, height, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        fontI->create_image(VK_FORMAT_R8G8B8A8_UNORM, {width, height}, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         fontI->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         fontI->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 

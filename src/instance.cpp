@@ -115,5 +115,35 @@ namespace vkd {
         if (VkResult res = vkCreateInstance(&instanceCreateInfo, nullptr, &_instance)) {
             throw std::runtime_error(std::string("Failed to create vulkan instance. err: ") + std::to_string(res));
         }
+
+
+        // Physical device
+        uint32_t gpuCount = 0;
+        // Get number of available physical devices
+        VK_CHECK_RESULT(vkEnumeratePhysicalDevices(_instance, &gpuCount, nullptr));
+        assert(gpuCount > 0);
+        // Enumerate devices
+        _physical_devices.resize(gpuCount);
+        VkResult err = vkEnumeratePhysicalDevices(_instance, &gpuCount, _physical_devices.data());
+        if (err) {
+            throw std::runtime_error(std::string("Could not enumerate physical devices: \n") + vkd::error_string(err));
+        }
+
+        // GPU selection
+
+        // Select physical device to be used for the Vulkan example
+        // Defaults to the first device unless specified by command line
+        uint32_t selectedDevice = 0;
+
+        _physical_device_props.resize(gpuCount);
+        _physical_device_feats.resize(gpuCount);
+        _physical_device_mem_props.resize(gpuCount);
+        int i = 0;
+        for (auto&& device : _physical_devices) {
+			vkGetPhysicalDeviceProperties(device, &_physical_device_props[i]);
+	        vkGetPhysicalDeviceFeatures(device, &_physical_device_feats[i]);
+	        vkGetPhysicalDeviceMemoryProperties(device, &_physical_device_mem_props[i]);
+            i++;
+        }
     }
 }

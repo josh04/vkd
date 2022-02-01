@@ -39,12 +39,15 @@ namespace vkd {
         void post_init() override;
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
 
-        VkSemaphore wait_prerender() const override { return _compute_complete; }
+        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
         auto compute_complete() const { return _compute_complete; }
         std::shared_ptr<Image> get_output_image() const override { return _image; }
         float get_output_ratio() const override { return _size[0] / (float)_size[1]; }
+        
+        void allocate(VkCommandBuffer buf) override;
+        void deallocate() override;
     private:
         std::vector<std::shared_ptr<ImageNode>> _inputs;
         std::shared_ptr<Kernel> _merge = nullptr;
@@ -52,7 +55,7 @@ namespace vkd {
         std::shared_ptr<Image> _image = nullptr;
 
         CommandBufferPtr _command_buffer = nullptr;
-        VkSemaphore _compute_complete;
+        SemaphorePtr _compute_complete;
 
         glm::uvec2 _size;
         bool _first_run = true;

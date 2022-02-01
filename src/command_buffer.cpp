@@ -38,9 +38,7 @@ namespace vkd {
 		VK_CHECK_RESULT(vkEndCommandBuffer(buf));
     }
 
-	// End the command buffer and submit it to the queue
-	// Uses a fence to ensure command buffer has finished executing before deleting it
-	void flush_command_buffer(VkDevice device, VkQueue queue, VkCommandPool pool, VkCommandBuffer buf) {
+	void submit_immediate_command_buffer(VkDevice device, VkQueue queue, VkCommandBuffer buf) {
 		assert(buf != VK_NULL_HANDLE);
 
         end_command_buffer(buf);
@@ -62,12 +60,18 @@ namespace vkd {
 		// Wait for the fence to signal that command buffer has finished executing
 #define DEFAULT_FENCE_TIMEOUT 100000000000
 		VK_CHECK_RESULT(vkWaitForFences(device, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
-
 		vkDestroyFence(device, fence, nullptr);
+	}
+
+	// End the command buffer and submit it to the queue
+	// Uses a fence to ensure command buffer has finished executing before deleting it
+	void flush_command_buffer(VkDevice device, VkQueue queue, VkCommandPool pool, VkCommandBuffer buf) {
+		submit_immediate_command_buffer(device, queue, buf);
+
 		vkFreeCommandBuffers(device, pool, 1, &buf);
 	}
 
-	void submit_command_buffer(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, VkSemaphore wait, VkSemaphore signal, Fence * fence) {
+	void submit_command_buffer(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, VkSemaphore wait, VkSemaphore signal, const Fence * fence) {
 		// Submit compute commands
 		VkSubmitInfo submit_info = {};
 		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -75,18 +79,42 @@ namespace vkd {
 		submit_info.pCommandBuffers = (buf != VK_NULL_HANDLE) ? &buf : VK_NULL_HANDLE;
 		submit_info.waitSemaphoreCount = (wait != VK_NULL_HANDLE) ? 1 : 0;
 		submit_info.pWaitSemaphores = (wait != VK_NULL_HANDLE) ? &wait : nullptr;
-		submit_info.pWaitDstStageMask = &wait_stage_mask;
+		submit_info.pWaitDstStageMask = (wait != VK_NULL_HANDLE) ? &wait_stage_mask : nullptr;
 		submit_info.signalSemaphoreCount = (signal != VK_NULL_HANDLE) ? 1 : 0;
-		submit_info.pSignalSemaphores = &signal;
-		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr));
+		submit_info.pSignalSemaphores = (signal != VK_NULL_HANDLE) ? &signal : nullptr;
+        if (fence) { fence->pre_submit(); }
+		auto res = vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr);
+		if (fence) { fence->mark_submit(); }
+		if (res == VK_NOT_READY) {
+			return; // gpu device waiting
+		} else if (res < 0) {
+			VK_CHECK_RESULT(res);
+		}
 	}
 
-	void submit_compute_buffer(VkQueue queue, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal, Fence * fence) {
-		submit_command_buffer(queue, buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, wait, signal, fence);
+	void submit_compute_buffer(Device& device, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal, const Fence * fence) {
+		std::lock_guard<std::mutex> lock(device.queue_mutex());
+		submit_command_buffer(device.compute_queue(), buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, wait, signal, fence);
 	}
+
+	void submit_compute_buffer(Device& device, VkCommandBuffer buf, std::nullptr_t, std::nullptr_t, const Fence * fence) {
+		std::lock_guard<std::mutex> lock(device.queue_mutex());
+		submit_command_buffer(device.compute_queue(), buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
+	}
+
+	void submit_compute_buffer(Device& device, VkCommandBuffer buf, const SemaphorePtr& wait, const SemaphorePtr& signal, const Fence * fence) {
+		submit_compute_buffer(device, buf, wait ? wait->get() : VK_NULL_HANDLE, signal->get(), fence);
+	}
+
 	
 	CommandBuffer::~CommandBuffer() {
-		vkFreeCommandBuffers(_device->logical_device(), _device->command_pool(), 1, &_buf);
+		if (_flush_on_destruct) {
+			flush();
+		}
+		if (_buf != VK_NULL_HANDLE)
+		{
+			vkFreeCommandBuffers(_device->logical_device(), _device->command_pool(), 1, &_buf);
+		}
 	}
 	
 	CommandBufferPtr CommandBuffer::make(const std::shared_ptr<Device>& device) {
@@ -95,9 +123,18 @@ namespace vkd {
 		return ptr;
 	}
 	
+	CommandBufferPtr CommandBuffer::make_immediate(const std::shared_ptr<Device>& device) {
+		auto ptr = std::make_unique<CommandBuffer>();
+		ptr->create(device);
+		ptr->begin();
+		ptr->_flush_on_destruct = true;
+		return ptr;
+	}
+	
 	void CommandBuffer::create(const std::shared_ptr<Device>& device) {
 		_device = device;
 		_buf = create_command_buffer(_device->logical_device(), _device->command_pool());
+		_default_signal = Semaphore::make(_device);
 	}
 
 	void CommandBuffer::begin() {
@@ -110,11 +147,14 @@ namespace vkd {
 	}
 
 	void CommandBuffer::flush() {
-		flush_command_buffer(_device->logical_device(), _device->compute_queue(), _device->command_pool(), _buf);
+		_flush_on_destruct = false;
+		submit_immediate_command_buffer(_device->logical_device(), _device->compute_queue(), _buf);
 	}
 
-	void CommandBuffer::submit(VkSemaphore wait, VkSemaphore signal, Fence * fence) {
-		submit_compute_buffer(_device->compute_queue(), _buf, wait, signal, fence);
+	void CommandBuffer::submit(const SemaphorePtr& wait, const SemaphorePtr& signal, Fence * fence) {
+		_flush_on_destruct = false;
+		_last_submitted_signal = signal != nullptr ? signal : _default_signal;
+		submit_compute_buffer(*_device, _buf, wait, _last_submitted_signal, fence);
 	}
 
 }

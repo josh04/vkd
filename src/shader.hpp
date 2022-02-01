@@ -10,11 +10,13 @@
 #include "spirv_reflect.h"
 #include "glm/glm.hpp"
 
+#include "vkd_dll.h"
+
 namespace vkd {
 
     class Device;
     class DescriptorLayout;
-    class Shader {
+    class VKDEXPORT Shader {
     public:
         Shader(std::shared_ptr<Device> device) : _device(device) {}
         ~Shader();
@@ -31,7 +33,7 @@ namespace vkd {
         std::vector<std::unique_ptr<std::string>> _main_names; 
     };
     
-    class ComputeShader {
+    class VKDEXPORT ComputeShader {
     public:
         ComputeShader(std::shared_ptr<Device> device) : _device(device) {}
         ~ComputeShader();
@@ -62,7 +64,17 @@ namespace vkd {
             size_t offset;
         };
         const auto& push_constant_types() const { return _types; }
-    private:
+
+        const auto& binding_names() const { return _set_layouts[0].binding_names; }
+        int index_for_name(const std::string& name) const { 
+            auto search = _set_layouts[0].binding_names.find(name);
+            if (search != _set_layouts[0].binding_names.end()) {
+                return search->second;
+            } 
+            return -1;
+        }
+
+    protected:
         void _reflect(SpvReflectShaderModule reflection_module);
         std::shared_ptr<Device> _device = nullptr;
 		VkPipelineShaderStageCreateInfo _stage;
@@ -73,6 +85,7 @@ namespace vkd {
 			uint32_t set_number;
 			VkDescriptorSetLayoutCreateInfo create_info;
 			std::vector<VkDescriptorSetLayoutBinding> bindings;
+            std::map<std::string, int> binding_names;
 		};
 
         std::vector<SetLayoutData> _set_layouts;
@@ -83,5 +96,17 @@ namespace vkd {
         std::vector<ParameterPair> _types;
 
         
+    };
+
+    class VKDEXPORT ManualComputeShader : public ComputeShader {
+    public:
+        ManualComputeShader(std::shared_ptr<Device> device) : ComputeShader(device) {}
+        ~ManualComputeShader();
+        ManualComputeShader(ManualComputeShader&&) = delete;
+        ManualComputeShader(const ManualComputeShader&) = delete;
+
+        void create(const std::string& kernel, const std::string& main_name);
+
+    private:
     };
 }

@@ -6,6 +6,7 @@
 #include "image.hpp"
 #include "buffer.hpp"
 #include "command_buffer.hpp"
+#include "make_param.hpp"
 
 namespace vkd {
     std::shared_ptr<DescriptorPool> Kernel::make_pool() {
@@ -20,13 +21,41 @@ namespace vkd {
         return desc_pool;
     }
 
+    std::shared_ptr<Kernel> Kernel::make(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes) {
+        auto kernel = std::make_shared<Kernel>(node.device(), node.param_hash_name());
+        kernel->init(node, path, func_name, local_sizes);
+        return kernel;
+    }
+
+    std::shared_ptr<Kernel> Kernel::make(EngineNode& node, std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes) {
+        auto kernel = std::make_shared<Kernel>(node.device(), node.param_hash_name());
+        kernel->init(std::move(shader), hash_name, local_sizes);
+        return kernel;
+    }
+
+    void Kernel::init(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes) {
+        init(path, func_name, local_sizes);
+        node.register_params(*this);
+    }
+
+    void Kernel::init(EngineNode& node, std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes) {
+        init(std::move(shader), hash_name, local_sizes);
+        node.register_params(*this);
+    }
+
     void Kernel::init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes) {
+
+		auto shader = std::make_unique<ComputeShader>(_device);
+        shader->create(path, func_name);
+        init(std::move(shader), path, local_sizes);
+    }
+
+    void Kernel::init(std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes) {
+        _shader = std::move(shader);
+        
         memset(&_constants, 0, sizeof(ExecutionConstants));
         _pipeline_cache = std::make_shared<PipelineCache>(_device);
         _pipeline_cache->create();
-
-		_shader = std::make_unique<ComputeShader>(_device);
-        _shader->create(path, func_name);
 
         _desc_set_layout = _shader->desc_set_layout();
 
@@ -35,8 +64,9 @@ namespace vkd {
         }
 
         _local_group_sizes = local_sizes;
-        std::string param_hash_full = _param_hash + "_" + path + "_"; 
+        std::string param_hash_full = _param_hash + "_" + hash_name + "_"; 
 
+        int i = 0;
         for (auto&& pair : _shader->push_constant_types()) {
             std::shared_ptr<ParameterInterface> param = nullptr;
             switch (pair.type) {
@@ -73,11 +103,16 @@ namespace vkd {
             case ParameterType::p_frame:
                 param = make_param<ParameterType::p_frame>(param_hash_full, pair.name, pair.offset);
                 break;
+            case ParameterType::p_bool:
+                param = make_param<ParameterType::p_bool>(param_hash_full, pair.name, pair.offset);
+                break;
             }
             _params.emplace(pair.name, param);
+            param->order(i);
             if (pair.name.substr(0, 1) != "_" && pair.name.substr(0, 4) != "vkd_") {
                 _public_params.emplace(pair.name, param);
             }
+            i++;
         }
         
         _create_pipeline(_full_pipeline, _local_group_sizes);
@@ -155,6 +190,8 @@ namespace vkd {
     }
 
 	void Kernel::dispatch(VkCommandBuffer buf, int32_t global_x, int32_t global_y, int32_t global_z) {
+        _args_changed = true;
+        update();
         _full_pipeline.pipeline->bind(buf, _desc_set->get());
 
         auto&& local_group_sizes_ = _full_pipeline.local_sizes;

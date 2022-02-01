@@ -91,8 +91,7 @@ namespace vkd {
                     present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
                     break;
                 }
-                if ((present_mode != VK_PRESENT_MODE_MAILBOX_KHR) 
-                && (present_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)) {
+                if ((present_mode != VK_PRESENT_MODE_MAILBOX_KHR) && (present_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)) {
                     present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
                 }
             }

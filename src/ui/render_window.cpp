@@ -18,6 +18,13 @@ namespace vkd {
 
         ImGui::InputText("path", _path, 1023);
 
+        if (ImGui::RadioButton("ffmpeg", _type == Type::Ffmpeg)) {
+            _type = Type::Ffmpeg;
+        }
+        if (ImGui::RadioButton("exr", _type == Type::Exr)) {
+            _type = Type::Exr;
+        }
+
         std::string render_button = "render";
         if (_running_render) { render_button = "render in progress"; }
         if (ImGui::Button(render_button.c_str()) && !_running_render) {
@@ -42,27 +49,35 @@ namespace vkd {
 
     void RenderWindow::attach_renderer(GraphBuilder& graph_builder, const std::vector<FakeNodePtr>& terms) {
         auto merge = std::make_shared<vkd::FakeNode>(-1, "vkd_output_merge", "merge");
-        auto download = std::make_shared<vkd::FakeNode>(-1, "vkd_output_download", "download");
-        auto ffmpeg_output = std::make_shared<vkd::FakeNode>(-1, "vkd_output_ffmpeg", "ffmpeg_output");
+        //auto download = std::make_shared<vkd::FakeNode>(-1, "vkd_output_download", "download");
+        std::shared_ptr<FakeNode> outp = nullptr;
+        if (_type == Type::Ffmpeg) {
+            outp = std::make_shared<vkd::FakeNode>(-1, "vkd_output_ffmpeg", "ffmpeg_output");
+        } else if (_type == Type::Exr) {
+            outp = std::make_shared<vkd::FakeNode>(-1, "vkd_output_exr", "exr_output");
+        } else {
+            return;
+        }
 
         for (auto&& term : terms) {
             merge->add_input(term);
         }
 
-        download->add_input(merge);
-        ffmpeg_output->add_input(download);
+        //download->add_input(merge);
+        //ffmpeg_output->add_input(download);
+        outp->add_input(merge);
 
         FrameRange range;
         range._frame_ranges.emplace(FrameInterval{Frame{_range.x}, Frame{_range.y}});
         merge->set_range(range);
-        download->set_range(range);
-        ffmpeg_output->set_range(range);
+        //download->set_range(range);
+        outp->set_range(range);
 
-        ffmpeg_output->set_param("path", std::string(_path));
+        outp->set_param("path", std::string(_path));
 
         graph_builder.add(merge);
-        graph_builder.add(download);
-        graph_builder.add(ffmpeg_output);
+        //graph_builder.add(download);
+        graph_builder.add(outp);
     }
 
     void RenderWindow::_execute(Graph& graph) {

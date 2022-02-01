@@ -111,7 +111,7 @@ namespace vkd {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawTriangle::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void DrawTriangle::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
 
     }
 }

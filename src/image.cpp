@@ -4,28 +4,59 @@
 #include "memory.hpp"
 #include "sampler.hpp"
 #include "buffer.hpp"
+#include "command_buffer.hpp"
+#include "memory/memory_manager.hpp"
+#include "memory/memory_pool.hpp"
+
 
 namespace vkd {
+    
+    std::shared_ptr<Image> Image::float_image(const std::shared_ptr<Device>& device, glm::ivec2 size, VkImageUsageFlags usage_flags) {
+        auto im = std::make_shared<vkd::Image>(device);
+        im->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, size, usage_flags | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        im->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        im->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
+        im->deallocate();
+
+        {
+            auto buf = CommandBuffer::make_immediate(device);
+            im->allocate(buf->get());
+        }
+
+        im->deallocate();
+
+        return im;
+    }
+
     Image::~Image() {
         if (_ui_desc_set != VK_NULL_HANDLE) {
             ImGui_ImplVulkan_RemoveTexture(_ui_desc_set);
         }
         _ui_desc_set = VK_NULL_HANDLE;
 
-        vkDestroySampler(_device->logical_device(), _sampler, nullptr);
-        vkDestroyImageView(_device->logical_device(), _view, nullptr);
+        if (!_no_dealloc) {
+            deallocate();
+        }
     }
 
-    void Image::create_image(VkFormat format, int32_t width, int32_t height, VkImageUsageFlags usage_flags) {
+    void Image::set_format(VkFormat format, glm::ivec2 sz, VkImageUsageFlags usage_flags) {
         _format = format;
-        _width = width;
-        _height = height;
+        _width = sz.x;
+        _height = sz.y;
+        _usage_flags = usage_flags;
+    }
+
+    void Image::create_image(VkFormat format, glm::ivec2 sz, VkImageUsageFlags usage_flags) {
+        _format = format;
+        _width = sz.x;
+        _height = sz.y;
+        _usage_flags = usage_flags;
         VkImageCreateInfo image_create_info{};
         memset(&image_create_info, 0, sizeof(VkImageCreateInfo));
         image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         image_create_info.imageType = VK_IMAGE_TYPE_2D;
         image_create_info.format = format;
-        image_create_info.extent = { (uint32_t)width, (uint32_t)height, 1 };
+        image_create_info.extent = { (uint32_t)sz.x, (uint32_t)sz.y, 1 };
         image_create_info.mipLevels = 1;
         image_create_info.arrayLayers = 1;
         image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -45,21 +76,48 @@ namespace vkd {
         memset(&mem_req, 0, sizeof(VkMemoryRequirements));
 
         vkGetImageMemoryRequirements(_device->logical_device(), _image, &mem_req);
-
-        VkMemoryAllocateInfo mem_alloc_info{};
-        memset(&mem_alloc_info, 0, sizeof(VkMemoryAllocateInfo));
-
-        mem_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        mem_alloc_info.allocationSize = mem_req.size;
-        _allocated_size = mem_req.size;
-        mem_alloc_info.memoryTypeIndex = find_memory_index(_device->memory_properties(), mem_req.memoryTypeBits, memory_property_flags);
+        uint32_t mem_index = find_memory_index(_device->memory_properties(), mem_req.memoryTypeBits, memory_property_flags);
         
-        VK_CHECK_RESULT(vkAllocateMemory(_device->logical_device(), &mem_alloc_info, nullptr, &_memory));
-        VK_CHECK_RESULT(vkBindImageMemory(_device->logical_device(), _image, _memory, 0));
+        _allocated_size = mem_req.size;
+        _memory_flags = memory_property_flags;
+        
+        _memory = _device->pool().allocate(mem_req.size, memory_property_flags, mem_index);
 
+        VK_CHECK_RESULT(vkBindImageMemory(_device->logical_device(), _image, _memory, 0));
+    }
+
+    void Image::allocate(VkCommandBuffer buf) {
+        if (!_allocated) {
+            create_image(_format, {_width, _height}, _usage_flags);
+            allocate(_memory_flags);
+            create_view(_aspect);
+
+            _allocated = true;
+
+            set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        }
+    }
+
+    void Image::deallocate() {
+        if (_sampler) { 
+            vkDestroySampler(_device->logical_device(), _sampler, nullptr); _sampler = VK_NULL_HANDLE; 
+            }
+        if (_view) { 
+            vkDestroyImageView(_device->logical_device(), _view, nullptr); _view = VK_NULL_HANDLE; 
+            }
+        if (_image) { 
+            vkDestroyImage(_device->logical_device(), _image, nullptr); _image = VK_NULL_HANDLE; 
+            }
+        if (_memory) {
+            _device->pool().deallocate(_memory);
+            _memory = VK_NULL_HANDLE;
+        }
+
+        _allocated = false;
     }
 
     void Image::create_view(VkImageAspectFlags aspect) {
+        _aspect = aspect;
         VkImageViewCreateInfo image_view_create_info{};
         memset(&image_view_create_info, 0, sizeof(image_view_create_info));
 
@@ -80,6 +138,7 @@ namespace vkd {
         image_view_create_info.subresourceRange.aspectMask = aspect;
         
         VK_CHECK_RESULT(vkCreateImageView(_device->logical_device(), &image_view_create_info, nullptr, &_view));
+        _allocated = true; // TODO remove once everything is onboard with nu-alloc
     }
 
     void Image::copy(Image& src, VkCommandBuffer buf) {
@@ -101,7 +160,7 @@ namespace vkd {
 
         copy_region.dstOffset = {0, 0, 0};
         copy_region.srcOffset = {0, 0, 0};
-        copy_region.extent = {_width, _height, 1};
+        copy_region.extent = {(uint32_t)_width, (uint32_t)_height, 1};
         vkCmdCopyImage(buf, src.image(), src.layout(), _image, _layout, 1, &copy_region);
 
         if (src_layout != VK_IMAGE_LAYOUT_UNDEFINED && src_layout != VK_IMAGE_LAYOUT_PREINITIALIZED) {
@@ -129,8 +188,8 @@ namespace vkd {
 
         region.imageOffset = {0, 0, 0};
         region.imageExtent = {
-            _width,
-            _height,
+            (uint32_t)_width,
+            (uint32_t)_height,
             1
         };
         vkCmdCopyBufferToImage(
@@ -146,9 +205,9 @@ namespace vkd {
         }
     }
 
-    void StagingImage::create_image(VkFormat format, int32_t width, int32_t height) {
+    void StagingImage::create_image(VkFormat format, glm::ivec2 size) {
         _tiling = VK_IMAGE_TILING_LINEAR;
-        Image::create_image(format, width, height, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);//, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        Image::create_image(format, size, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);//, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
         Image::allocate(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         //Image::create_view(VK_IMAGE_ASPECT_COLOR_BIT);
     }

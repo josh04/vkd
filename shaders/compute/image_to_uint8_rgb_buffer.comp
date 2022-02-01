@@ -1,0 +1,23 @@
+#version 450
+
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(std430, binding = 1) buffer Buf 
+{
+   uint image[];
+};
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 dim = imageSize(inputTex);
+
+    vec4 p = imageLoad(inputTex, coord);
+
+    image[(coord.y * dim.x + coord.x)] = packUnorm4x8(vec4(p.xyz, 1.0));
+}

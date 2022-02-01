@@ -7,7 +7,7 @@
 
 namespace vkd {
     DescriptorSet::~DescriptorSet() {
-	    VK_CHECK_RESULT(vkFreeDescriptorSets(_device->logical_device(), _pool->get(), 1, &_desc_set));
+	    VK_CHECK_RESULT_NO_THROW(vkFreeDescriptorSets(_device->logical_device(), _pool->get(), 1, &_desc_set));
 	}
 
     void DescriptorSet::add_buffer(Buffer& buffer) {

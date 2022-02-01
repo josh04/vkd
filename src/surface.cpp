@@ -2,6 +2,7 @@
 #include "SDL2/SDL_syswm.h"
 #include "vulkan.hpp"
 #include "device.hpp"
+#include "renderdoc_integration.hpp"
 
 #if defined(unix) && !defined(__APPLE__)
 #include <X11/Xlib-xcb.h>
@@ -37,7 +38,7 @@ namespace vkd {
         const void *swapchain = SDL_RenderGetMetalLayer(renderer);
         surfaceCreateInfo.pView = swapchain;
         VK_CHECK_RESULT(vkCreateMacOSSurfaceMVK(_instance->instance(), &surfaceCreateInfo, nullptr, &_surface));
-#else if defined(_WIN32)
+#elif defined(_WIN32)
         // put here
         VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {};
         memset(&surfaceCreateInfo, 0, sizeof(VkWin32SurfaceCreateInfoKHR));
@@ -49,6 +50,8 @@ namespace vkd {
         surfaceCreateInfo.hinstance = (HINSTANCE)platformHandle;
         surfaceCreateInfo.hwnd = (HWND)platformWindow;
         VK_CHECK_RESULT(vkCreateWin32SurfaceKHR(_instance->instance(), &surfaceCreateInfo, nullptr, &_surface));
+
+        renderdoc_init(_instance->get(), surfaceCreateInfo.hwnd);
 #endif
 
 

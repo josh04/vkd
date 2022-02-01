@@ -26,6 +26,11 @@ namespace vkd {
     void EngineNode::register_params(Kernel& k) {
         _params[k.name()] = k.public_params();
     }
+    
+    void EngineNode::register_non_kernel_param(const std::shared_ptr<ParameterInterface>& param) { 
+        _params["_"].emplace(param->name(), param); 
+    }
+    
     //const std::map<std::string, NodeData> EngineNode::node_type_map() { return NodeData; }
     std::map<std::string, EngineNode::NodeData> EngineNode::_NodeData;
 

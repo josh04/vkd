@@ -6,6 +6,10 @@
 #include "compute/kernel.hpp"
 #include "imgui/imgui.h"
 
+#include "image_downloader.hpp"
+
+#include "compute/image_node.hpp"
+
 extern "C" {
 #include <libavformat/avformat.h>
 }
@@ -48,10 +52,24 @@ namespace vkd {
             );
         });
 
-        auto sz = _buffer_node_sz->get_image_size();
+        auto image = _buffer_node->get_output_image();
+        auto sz = image->dim();
+
         _width = sz[0];
         _height = sz[1];
 
+        _downloader = std::make_unique<ImageDownloader>(_device);
+        _downloader->init(_buffer_node->get_output_image(), ImageDownloader::OutFormat::half_rgba, param_hash_name());
+        for (auto&& kern : _downloader->kernels()) {
+            register_params(*kern);
+        }
+
+        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        _compute_complete = Semaphore::make(_device);
+
+        begin_command_buffer(_compute_command_buffer);
+        _downloader->commands(_compute_command_buffer);
+        end_command_buffer(_compute_command_buffer);
 
         // avcodec
 
@@ -130,20 +148,20 @@ namespace vkd {
         return updated;
     }
 
-    void FfmpegOutput::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void FfmpegOutput::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
         if (type != ExecutionType::Execution) {
-            submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
+            submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
             return;
         }
 
-        submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, _fence.get());
+        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, _fence.get());
         
         if (_fence) {
             _fence->wait();
             _fence->reset();        
         }
 
-        uint8_t * buffer = (uint8_t *)_buffer_node->get_output_buffer()->get();
+        uint8_t * buffer = (uint8_t *)_downloader->get_main();
 
         std::shared_ptr<AVFrame> avFrame(av_frame_alloc(), [](AVFrame* a){ av_frame_free(&a); });
         
@@ -194,7 +212,7 @@ namespace vkd {
             }
         }
 
-        submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
+        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
     }
 
     void FfmpegOutput::finish() {

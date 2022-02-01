@@ -7,6 +7,7 @@
 #include "imgui/imfilebrowser.h"
 
 namespace vkd {
+    class MainUI;
     class Bin {
     public:
         Bin() = default;
@@ -14,7 +15,7 @@ namespace vkd {
         Bin(Bin&&) = delete;
         Bin(const Bin&) = delete;
 
-        void draw();
+        void draw(MainUI& ui);
 
         void add_entry(std::string path);
         void remove_entry(int i);

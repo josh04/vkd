@@ -29,7 +29,7 @@ namespace vkd {
         void post_init() override;
         bool update(ExecutionType type) override { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
 
         struct Particle {
             glm::vec2 pos;								// Particle position
@@ -38,7 +38,7 @@ namespace vkd {
         };
 
         Buffer& storage_buffer() { return *_compute_storage_buffer; }
-        VkSemaphore wait_prerender() const override { return _compute_complete; }
+        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
         auto compute_complete() const { return _compute_complete; }
     private:
     #define PARTICLE_COUNT 256 * 128
@@ -65,6 +65,6 @@ namespace vkd {
 
         uint8_t * _mapped_uniform_buffer = nullptr;
 
-        VkSemaphore _compute_complete;
+        SemaphorePtr _compute_complete;
     };
 }

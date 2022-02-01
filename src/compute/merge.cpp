@@ -25,7 +25,7 @@ namespace vkd {
         _blank->init("shaders/compute/blank.comp.spv", "main", {16, 16, 1});
         register_params(*_blank);
 
-        _compute_complete = create_semaphore(_device->logical_device());
+        _compute_complete = Semaphore::make(_device);
 
         auto image = _inputs[0]->get_output_image();
         if (!image) {
@@ -33,20 +33,20 @@ namespace vkd {
         }
         _size = image->dim();
 
-        _image = std::make_shared<vkd::Image>(_device);
-        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _size.x, _size.y, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
-        _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
+        _image = Image::float_image(_device, _size, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
-        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
-        _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
         _first_run = true;
         
         _blank->set_push_arg_by_name("_blank", glm::vec4(0.0, 0.0, 0.0, 0.0));
-
         _blank->set_arg(0, _image);
-        _blank->update();
+    }
+
+    void Merge::allocate(VkCommandBuffer buf) {
+        _image->allocate(buf);
+    }
+
+    void Merge::deallocate() { 
+        _image->deallocate();
     }
 
     void Merge::post_init()
@@ -64,24 +64,20 @@ namespace vkd {
             }
         }
 
-        if (update) {
-            _command_buffer->begin();
-            _blank->dispatch(*_command_buffer.get(), _size.x, _size.y);
-
-            for (auto&& i : _inputs) {
-                _merge->set_arg(0, _image);
-                _merge->set_arg(1, i->get_output_image());
-                _merge->update();
-
-                _merge->dispatch(*_command_buffer.get(), _size.x, _size.y);
-            }
-            _command_buffer->end();
-        }
-
         return update;
     }
 
-    void Merge::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void Merge::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+        _command_buffer->begin();
+        _blank->dispatch(*_command_buffer.get(), _size.x, _size.y);
+
+        for (auto&& i : _inputs) {
+            _merge->set_arg(0, _image);
+            _merge->set_arg(1, i->get_output_image());
+
+            _merge->dispatch(*_command_buffer.get(), _size.x, _size.y);
+        }
+        _command_buffer->end();
         _command_buffer->submit(wait_semaphore, _compute_complete, fence);
     }
 }

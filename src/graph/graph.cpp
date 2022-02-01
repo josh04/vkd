@@ -3,6 +3,9 @@
 #include "device.hpp"
 #include "fence.hpp"
 #include "command_buffer.hpp"
+#include "memory/memory_pool.hpp"
+
+#include "TaskScheduler.h"
 
 namespace vkd {
 
@@ -70,6 +73,8 @@ namespace vkd {
                 break;
             }
         }
+
+        ParameterCache::reset_changed();
         return do_update;
     }
 
@@ -81,8 +86,8 @@ namespace vkd {
         }
     }
 
-    std::vector<VkSemaphore> Graph::semaphores() {
-        std::vector<VkSemaphore> sems;
+    std::vector<SemaphorePtr> Graph::semaphores() {
+        std::vector<SemaphorePtr> sems;
         for (auto&& node : _nodes) {
             if (node->range_contains(frame())) {
                 sems.push_back(node->wait_prerender());
@@ -101,16 +106,66 @@ namespace vkd {
             }
         }
 
+        std::map<EngineNode *, int> output_counts;
+
+
         if (_nodes_to_run.size()) {
             flush();
+            std::vector<std::unique_ptr<enki::TaskSet>> dealloc_tasks;
+            std::vector<CommandBufferPtr> cmd_buffers;
             for (auto&& node : _nodes_to_run) {
+                auto buf = CommandBuffer::make(_device);
+                {
+                    auto scope = buf->record();
+                    node->allocate(buf->get());
+                }
+                buf->submit();
+
                 if (node != *_nodes_to_run.rbegin()) {
-                    node->execute(type, VK_NULL_HANDLE);
+                    node->execute(type, buf->signal());
                 } else {
-                    node->execute(type, VK_NULL_HANDLE, _fence.get());
+                    node->execute(type, buf->signal(), _fence.get());
+                }
+
+                cmd_buffers.emplace_back(std::move(buf));
+                
+                for (auto&& input : node->graph_inputs()) {
+                    output_counts[input.get()]++;
+                    if (output_counts[input.get()] >= input->output_count()) {
+                        
+                        auto task = std::make_unique<enki::TaskSet>(1, [this, input](enki::TaskSetPartition range, uint32_t threadnum) mutable {
+                            try {
+                                auto fence = Fence::create(_device, false);
+                                fence->submit();
+                                fence->wait();
+                                fence->reset();
+
+                                input->deallocate();
+                            } catch (...) {
+                                std::cout << "Unknown error in deallocation task." << std::endl;
+                            }
+                        });
+
+                        ts().AddTaskSetToPipe(task.get());
+                        dealloc_tasks.emplace_back(std::move(task));
+                    }
                 }
             }
+            for (auto&& task : dealloc_tasks) {
+                ts().WaitforTask(task.get());
+            }
+            
+            auto fence = Fence::create(_device, false);
+            fence->submit();
+            fence->wait();
+            fence->reset();
         }
+
+        for (auto&& node : _nodes_to_run) {
+            node->post_execute(type);
+        }
+        constexpr size_t trim_limit = 6ULL * 1024ULL * 1024ULL * 1024ULL;
+        _device->pool().trim(trim_limit);
     }
 
     void Graph::finish() {
@@ -120,7 +175,7 @@ namespace vkd {
                 node->finish();
             }
         }
-        submit_compute_buffer(_device->compute_queue(), VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, _fence.get());
+        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, _fence.get());
     }
 
     void Graph::flush() {

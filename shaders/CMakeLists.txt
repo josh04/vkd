@@ -1,4 +1,8 @@
+
 set(GLSL_VALIDATOR "glslangValidator")
+if (APPLE)
+set(GLSL_VALIDATOR "/usr/local/bin/glslangValidator")
+endif()
 
 file(GLOB_RECURSE GLSL_SOURCE_FILES
     "*/*.frag"
@@ -25,3 +29,5 @@ add_custom_target(
     spirv-shaders 
     DEPENDS ${SPIRV_BINARY_FILES}
 )
+
+install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION bin)

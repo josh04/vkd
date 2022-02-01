@@ -53,7 +53,11 @@ namespace vkd {
         void post_init() override;
         bool update(ExecutionType type) override { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override;
-        void execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+
+        auto input_node() const { return _image_node; }
+
+        const auto& offset_w_h() const { return _offset_w_h; }
 
         struct FSVertex {
             glm::vec2 position;
@@ -73,6 +77,9 @@ namespace vkd {
         std::shared_ptr<GraphicsPipeline> _pipeline = nullptr;
         
         VkSampler _sampler;
+
+        
+        glm::ivec4 _offset_w_h;
 
     };
 

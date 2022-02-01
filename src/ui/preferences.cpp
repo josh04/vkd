@@ -7,7 +7,7 @@
 
 #include "cereal/cereal.hpp"
 
-CEREAL_CLASS_VERSION(vkd::Preferences, 0);
+CEREAL_CLASS_VERSION(vkd::Preferences, 1);
 
 namespace {
     std::string vkd_folder = "/vkd";

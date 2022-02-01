@@ -1,0 +1,49 @@
+
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    float r_min_point;
+    float r_max_point;
+    float g_min_point;
+    float g_max_point;
+    float b_min_point;
+    float b_max_point;
+} push;
+
+float scale_clamp(float inp, float min_point, float max_point) {
+    float r_scale = max_point - min_point;
+    float r = (clamp(inp, min_point, max_point) - min_point) / r_scale;
+    return r;
+}
+
+float scale_clamp_invert(float inp, float min_point, float max_point) {
+    float r_scale = max_point - min_point;
+    float r = ((1.0 - inp) - min_point) / r_scale;
+    return r;
+}
+
+float scale_clamp_invert2(float inp, float min_point, float max_point) {
+    float r_scale = max_point - min_point;
+    float inp_scale = (inp - min_point) / r_scale;
+    float r = 1.0 - inp_scale;
+    return r;
+}
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    
+    vec4 inp = imageLoad(inputTex, coord);
+    inp.x = scale_clamp_invert2(inp.x, push.r_min_point, push.r_max_point);
+    inp.y = scale_clamp_invert2(inp.y, push.g_min_point, push.g_max_point);
+    inp.z = scale_clamp_invert2(inp.z, push.b_min_point, push.b_max_point);
+
+    imageStore(outputTex, coord, inp);
+}

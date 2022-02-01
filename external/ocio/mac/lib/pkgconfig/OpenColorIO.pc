@@ -1,0 +1,11 @@
+prefix=/Users/josh04/code/OpenColorIO/build/bundle/release
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${exec_prefix}/include
+
+Name: OpenColorIO
+Version: 2.2.0
+Description: OpenColorIO (OCIO) is a complete color management solution
+URL: https://github.com/AcademySoftwareFoundation/OpenColorIO
+Libs: -L${libdir} -lOpenColorIO
+Cflags: -I${includedir}

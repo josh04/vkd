@@ -1,12 +1,18 @@
 #include <iostream>
 #include "device.hpp"
 #include "vulkan.hpp"
+#include "host_cache.hpp"
 #ifdef __APPLE__
 #include "vulkan/vulkan_beta.h"
 #endif
 #include <algorithm>
 
+#include "memory/memory_pool.hpp"
+
 namespace vkd {
+    
+    Device::Device(std::shared_ptr<Instance> instance) : _instance(instance), _host_cache(std::make_unique<HostCache>()), _memory_manager(std::make_unique<MemoryManager>()), _memory_pool(std::make_unique<MemoryPool>(*this)) {}
+
     Device::~Device() {
         vkResetCommandPool(_logical_device, _command_pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
     }

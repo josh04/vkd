@@ -8,22 +8,24 @@ CEREAL_CLASS_VERSION(glm::ivec4, 0);
 CEREAL_CLASS_VERSION(glm::uvec2, 0);
 CEREAL_CLASS_VERSION(glm::uvec4, 0);
 CEREAL_CLASS_VERSION(vkd::Frame, 0);
-CEREAL_CLASS_VERSION(vkd::ParameterInterface, 0);
+CEREAL_CLASS_VERSION(vkd::ParameterInterface, 2);
 
 #define PARAM_MACRO(NAME, VERSION) CEREAL_REGISTER_TYPE(NAME) \
 CEREAL_CLASS_VERSION(NAME, VERSION)
 
-PARAM_MACRO(vkd::Parameter<float>, 0);
-PARAM_MACRO(vkd::Parameter<int>, 0);
-PARAM_MACRO(vkd::Parameter<unsigned int>, 0);
-PARAM_MACRO(vkd::Parameter<glm::vec2>, 0);
-PARAM_MACRO(vkd::Parameter<glm::vec4>, 0);
-PARAM_MACRO(vkd::Parameter<glm::ivec2>, 0);
-PARAM_MACRO(vkd::Parameter<glm::ivec4>, 0);
-PARAM_MACRO(vkd::Parameter<glm::uvec2>, 0);
-PARAM_MACRO(vkd::Parameter<glm::uvec4>, 0);
-PARAM_MACRO(vkd::Parameter<std::string>, 0);
-PARAM_MACRO(vkd::Parameter<vkd::Frame>, 0);
+#define PARAMETER_VERSION 1
+PARAM_MACRO(vkd::Parameter<float>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<int>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<unsigned int>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<glm::vec2>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<glm::vec4>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<glm::ivec2>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<glm::ivec4>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<glm::uvec2>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<glm::uvec4>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<std::string>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<vkd::Frame>, PARAMETER_VERSION);
+PARAM_MACRO(vkd::Parameter<bool>, PARAMETER_VERSION);
 
 namespace vkd {
     std::unique_ptr<ParameterCache> ParameterCache::_singleton = nullptr;

@@ -10,10 +10,10 @@ namespace vkd {
 
     void ColourSquares::init() {
         _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = create_semaphore(_device->logical_device());
+        _compute_complete = Semaphore::make(_device);
         
         _image = std::make_shared<vkd::Image>(_device);
-        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, {_width, _height}, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
         _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
         
@@ -27,7 +27,6 @@ namespace vkd {
         _square->init("shaders/compute/square.comp.spv", "main", {16, 16, 1});
         register_params(*_square);
         _square->set_arg(0, _image);
-        _square->update();
 
 
         struct SquareData {
@@ -68,7 +67,7 @@ namespace vkd {
         return update;
     }
 
-    void ColourSquares::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
-        submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void ColourSquares::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

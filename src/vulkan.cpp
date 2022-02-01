@@ -52,11 +52,6 @@ namespace vkd {
 
 	    std::shared_ptr<MainUI> _ui = nullptr;
 
-        std::vector<VkPhysicalDevice> _physicalDevices;
-        std::vector<VkPhysicalDeviceProperties> _physicalDeviceProps;
-        std::vector<VkPhysicalDeviceFeatures> _physicalDeviceFeats;
-        std::vector<VkPhysicalDeviceMemoryProperties> _physicalDeviceMemProps;
-
         std::shared_ptr<Instance> _instance;
         std::shared_ptr<Device> _device;
         VkFormat _depth_format, _colour_format;
@@ -83,8 +78,11 @@ namespace vkd {
         uint32_t _height = 0;
         std::unique_ptr<enki::TaskScheduler> _task_scheduler = nullptr;
 
-        FencePtr callback_fence = nullptr;
+        std::vector<FencePtr> callback_fences;
+        FencePtr sync_fence = nullptr;
     }
+
+    enki::TaskScheduler& ts() { return *_task_scheduler; }
 
     void shutdown() {
 
@@ -103,6 +101,7 @@ namespace vkd {
         //std::vector<VkFence> _command_buffer_complete;
 
         _command_buffer_complete.clear();
+        sync_fence = nullptr;
 
         _swapchain = nullptr;
         _surface = nullptr;
@@ -111,21 +110,21 @@ namespace vkd {
 
         //VkSemaphore _present_complete;
         //VkSemaphore _render_complete;
-        callback_fence = nullptr;
 
         _device = nullptr;
         _instance = nullptr;
 
         _task_scheduler = nullptr;
+        callback_fences.clear();
     }
 
 	Device& device() { return *_device; }
 	DrawUI& get_ui() { return *_draw_ui; }
 
-    VkResult createInstance(bool enableValidation) {
+    std::shared_ptr<Instance> createInstance(bool enableValidation) {
         
-        _instance = std::make_shared<Instance>();
-        _instance->init(enableValidation);
+        auto instance = std::make_shared<Instance>();
+        instance->init(enableValidation);
 
         // If requested, we enable the default validation layers for debugging
         if (_enableValidation)
@@ -134,39 +133,10 @@ namespace vkd {
             // For validating (debugging) an application the error and warning bits should suffice
             VkDebugReportFlagsEXT debugReportFlags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
             // Additional flags include performance info, loader and layer debug messages, etc.
-            //vks::debug::setupDebugging(_instance, debugReportFlags, VK_NULL_HANDLE);
+            //vks::debug::setupDebugging(instance, debugReportFlags, VK_NULL_HANDLE);
         }
 
-        // Physical device
-        uint32_t gpuCount = 0;
-        // Get number of available physical devices
-        VK_CHECK_RESULT(vkEnumeratePhysicalDevices(_instance->instance(), &gpuCount, nullptr));
-        assert(gpuCount > 0);
-        // Enumerate devices
-        _physicalDevices.resize(gpuCount);
-        VkResult err = vkEnumeratePhysicalDevices(_instance->instance(), &gpuCount, _physicalDevices.data());
-        if (err) {
-            throw std::runtime_error(std::string("Could not enumerate physical devices: \n") + vkd::error_string(err));
-        }
-
-        // GPU selection
-
-        // Select physical device to be used for the Vulkan example
-        // Defaults to the first device unless specified by command line
-        uint32_t selectedDevice = 0;
-
-        _physicalDeviceProps.resize(gpuCount);
-        _physicalDeviceFeats.resize(gpuCount);
-        _physicalDeviceMemProps.resize(gpuCount);
-        int i = 0;
-        for (auto&& device : _physicalDevices) {
-			vkGetPhysicalDeviceProperties(device, &_physicalDeviceProps[i]);
-	        vkGetPhysicalDeviceFeatures(device, &_physicalDeviceFeats[i]);
-	        vkGetPhysicalDeviceMemoryProperties(device, &_physicalDeviceMemProps[i]);
-            i++;
-        }
-
-        return VK_SUCCESS;
+        return instance;
     }
 
     void init(SDL_Window * window, SDL_Renderer * renderer) {
@@ -174,11 +144,11 @@ namespace vkd {
         _task_scheduler = std::make_unique<enki::TaskScheduler>();
         _task_scheduler->Initialize();
 
-        createInstance(true);
+        _instance = createInstance(true);
         _device = std::make_shared<Device>(_instance);
-        _device->create(_physicalDevices[0]);
+        _device->create(_instance->get_physical_device());
 
-        get_depth_format(_physicalDevices[0], &_depth_format);
+        get_depth_format(_instance->get_physical_device(), &_depth_format);
         
         _surface = std::make_shared<Surface>(_instance);
         _surface->init(window, renderer, _device);
@@ -191,14 +161,14 @@ namespace vkd {
         _width = 1280;
         _height = 720;
 
-        _swapchain->create(_width, _height, false);
+        _swapchain->create(_width, _height, true);
         _command_buffers.resize(_swapchain->count());
         for (auto&& command_buffer : _command_buffers) {
             command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
         }
 
         _depth_image = std::make_unique<Image>(_device);
-        _depth_image->create_image(_depth_format, _width, _height, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        _depth_image->create_image(_depth_format, {_width, _height}, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
         _depth_image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         // Stencil aspect should only be set on depth + stencil formats (VK_FORMAT_D16_UNORM_S8_UINT..VK_FORMAT_D32_SFLOAT_S8_UINT
         VkImageAspectFlags depth_view_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -237,7 +207,11 @@ namespace vkd {
         _ui = std::make_unique<MainUI>();
         _ui->set_device(_device);
 
-        callback_fence = Fence::create(_device, false);
+        callback_fences.resize(_swapchain->count());
+        for (auto&& fence : callback_fences) {
+            fence = Fence::create(_device, false);
+        }
+        sync_fence = Fence::create(_device, false);
     }
 
     void engine_node_init(const std::shared_ptr<EngineNode>& node, const std::string& param_hash_name) {
@@ -247,7 +221,6 @@ namespace vkd {
         node->set_renderpass(_renderpass);
 
         node->post_setup();
-        //node->set_timeline(timeline);
     }
 
     std::shared_ptr<vkd::EngineNode> make(const std::string& node_type, const std::string& param_hash_name) {
@@ -297,7 +270,7 @@ namespace vkd {
         end_command_buffer(buf);
     }
 
-    void submit_buffer(VkQueue queue, VkCommandBuffer buf, Fence * fence) {
+    void submit_buffer(VkQueue queue, VkCommandBuffer buf, Fence * fence, FencePtr& callback_fence) {
 		// Pipeline stage at which the queue submission will wait (via pWaitSemaphores)
 		std::vector<VkPipelineStageFlags> wait_stage_masks = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 		
@@ -306,9 +279,11 @@ namespace vkd {
         auto&& sems = _ui->semaphores();
 
         for (auto&& sem : sems) {
-            if (sem != VK_NULL_HANDLE) {
-                wait_semaphores.push_back(sem);
-                wait_stage_masks.push_back(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+            if (sem != nullptr) {
+                if (sem->get() != VK_NULL_HANDLE) {
+                    wait_semaphores.push_back(sem->get());
+                    wait_stage_masks.push_back(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+                }
             }
         }
 
@@ -323,8 +298,26 @@ namespace vkd {
 		submit_info.commandBufferCount = 1;                           // One command buffer
 
 		// Submit to the graphics queue passing a wait fence
-		VK_CHECK_RESULT_TIMEOUT(vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr));
-        submit_compute_buffer(queue, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, callback_fence.get());
+        {
+            if (fence) { fence->pre_submit(); }
+            std::lock_guard<std::mutex> lock(_device->queue_mutex());
+            double wait_time = 0.5;
+            VkResult res = VK_SUCCESS;
+            for (int i = 0; i < 20; ++i) {
+                res = vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr);
+		        if (fence) { fence->mark_submit(); }
+                VK_CHECK_RESULT_TIMEOUT(res);
+                if (res == VK_SUCCESS) {
+                    break;
+                }
+                std::cout << "Slow: Timeout waiting on Queue Submit (" << wait_time * (i + 1) << ")." << std::endl;
+            }
+            if (res == VK_TIMEOUT) {
+                std::cout << "Slow: Queue wait failed after 10s, issues likely inbound." << std::endl;
+            }
+        }
+        
+        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, callback_fence.get());
     }
 
     namespace {
@@ -332,13 +325,14 @@ namespace vkd {
     }
 
     void render_callback(uint32_t current_buffer) {
+
         if (_callback_task) {
             _task_scheduler->WaitforTask(_callback_task.get());
         }
         _callback_task = std::make_unique<enki::TaskSet>(1, [current_buffer]( enki::TaskSetPartition range, uint32_t threadnum) {
             try {
-                callback_fence->wait();
-                callback_fence->reset();
+                callback_fences[current_buffer]->wait();
+                callback_fences[current_buffer]->reset();
                 _draw_ui->flush();
             } catch (...) {
 
@@ -347,7 +341,13 @@ namespace vkd {
 
         _task_scheduler->AddTaskSetToPipe(_callback_task.get());
         //
-    } 
+    }
+    
+	void synchronise_to_host_thread() {
+        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, sync_fence.get());
+        sync_fence->wait();
+        sync_fence->reset();
+    }
 
 	void draw() {
 
@@ -365,7 +365,7 @@ namespace vkd {
 
         _ui->execute();
         
-        submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer].get());
+        submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer].get(), callback_fences[current_buffer]);
         
         render_callback(current_buffer);
 
@@ -443,10 +443,10 @@ namespace vkd {
 
             if (ImGui::TreeNode("Physical Devices")) {
                 int i = 0;
-                for (auto&& device : _physicalDeviceProps) {
+                for (auto&& device : _instance->physical_device_props()) {
                     std::stringstream strm;
-                    auto&& feats = _physicalDeviceFeats[i];
-                    auto&& memProps = _physicalDeviceMemProps[i];
+                    auto&& feats = _instance->physical_device_feats()[i];
+                    auto&& memProps = _instance->physical_device_mem_props()[i];
                     strm << device.deviceName 
                     << " - Type: " << physical_device_to_string(device.deviceType)
                     << " - API: " << (device.apiVersion >> 22) << "." << ((device.apiVersion >> 12) & 0x3ff) << "." << (device.apiVersion & 0xfff) << "\n";

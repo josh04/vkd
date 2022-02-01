@@ -43,13 +43,25 @@
             ]
         },
         {
-            "name": "demo (mac 2)",
+            "name": "video (mac 2)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cmake/src/vkd-app",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-app",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/cmake",
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "photo (mac 2)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-photo",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin",
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb"
@@ -58,10 +70,10 @@
             "name": "demo (win)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cmake/src/vkd-app.exe",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-app.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/cmake",
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin/",
             "externalConsole": false,
             "setupCommands": [
                 {
@@ -75,10 +87,10 @@
             "name": "tests (mac 2)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cmake/tests/vkd-test",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-test",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/cmake",
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin",
             "environment": [],
             "externalConsole": false,
             "MIMode": "lldb"

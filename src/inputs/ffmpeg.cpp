@@ -13,20 +13,6 @@ extern "C" {
 namespace vkd {
     REGISTER_NODE("ffmpeg", "ffmpeg", Ffmpeg);
 
-    Ffmpeg::BlockEditParams::BlockEditParams(ShaderParamMap& map, std::string hash) {
-        
-        total_frame_count = make_param<ParameterType::p_int>(hash, "_total_frame_count", 0);
-
-        frame_start_block = make_param<ParameterType::p_frame>(hash, "frame_start_block", 0);
-        frame_end_block = make_param<ParameterType::p_frame>(hash, "frame_end_block", 0);
-        content_relative_start = make_param<ParameterType::p_frame>(hash, "content_relative_start", 0);
-
-        map["_"].emplace(total_frame_count->name(), total_frame_count);
-        map["_"].emplace(frame_start_block->name(), frame_start_block);
-        map["_"].emplace(frame_end_block->name(), frame_end_block);
-        map["_"].emplace(content_relative_start->name(), content_relative_start);
-    }
-
     Ffmpeg::Ffmpeg() : _block() {
 
     }
@@ -71,7 +57,7 @@ namespace vkd {
         } 
 
         _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = create_semaphore(_device->logical_device());
+        _compute_complete = Semaphore::make(_device);
 
         _format_context = avformat_alloc_context();
         
@@ -120,40 +106,15 @@ namespace vkd {
         _frame_count = _video_stream->nb_frames + 1 - ((_video_stream->nb_frames + 1) % 2);
         _block.total_frame_count->as<int>().set_force(_frame_count > 0 ? _frame_count : 100);
         
-        _buffer_size = _width * _height * 1.5 * sizeof(uint8_t);
 
-        _staging_buffer = std::make_shared<StagingBuffer>(_device);
-        _staging_buffer->create(_buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-        _staging_buffer_ptr = (uint32_t*)_staging_buffer->map();
-
-        _gpu_buffer = std::make_shared<StorageBuffer>(_device);
-        _gpu_buffer->create(_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-
-        _image = std::make_shared<vkd::Image>(_device);
-        _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
-        _image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        _image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
-
-        auto buf = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
-
-        _image->set_layout(buf, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-        vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
-
-        _yuv420 = std::make_shared<Kernel>(_device, param_hash_name());
-        _yuv420->init("shaders/compute/yuv420.comp.spv", "main", {16, 16, 1});
-        register_params(*_yuv420);
-        _yuv420->set_arg(0, _gpu_buffer);
-        _yuv420->set_arg(1, _image);
-        _yuv420->update();
+        _uploader = std::make_unique<ImageUploader>(_device);
+        _uploader->init(_width, _height, ImageUploader::InFormat::yuv420p, ImageUploader::OutFormat::float32, param_hash_name());
+        for (auto&& kern : _uploader->kernels()) {
+            register_params(*kern);
+        }
 
         begin_command_buffer(_compute_command_buffer);
-
-        _gpu_buffer->copy(*_staging_buffer, _buffer_size, _compute_command_buffer);
-        _gpu_buffer->barrier(_compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-        _yuv420->dispatch(_compute_command_buffer, _width, _height);
-        
+        _uploader->commands(_compute_command_buffer);
         end_command_buffer(_compute_command_buffer);
 
         //_local_timeline->frame_count = _frame_count;
@@ -176,7 +137,7 @@ namespace vkd {
         auto start_block = _block.frame_start_block->as<Frame>().get();
         auto end_block = _block.frame_end_block->as<Frame>().get();
         if (frame.index < start_block.index || frame.index > end_block.index) {
-            memset(_staging_buffer_ptr, 0, _buffer_size);
+            memset(_uploader->get_main(), 0, _buffer_size);
             if (!_blanked) {
                 _blanked = true;
                 updated = true;
@@ -232,10 +193,10 @@ namespace vkd {
 
             if (!_eof) {
                 for (int j = 0; j < _height; ++j) {
-                    memcpy((uint8_t*)_staging_buffer_ptr + j * _width, avFrame->data[0] + j * avFrame->linesize[0], _width);
+                    memcpy((uint8_t*)_uploader->get_main() + j * _width, avFrame->data[0] + j * avFrame->linesize[0], _width);
                     if (j < _height / 2) {
-                        memcpy((uint8_t*)_staging_buffer_ptr + _width * _height       + j * _width/2,   avFrame->data[1] + j * avFrame->linesize[1], _width/2);
-                        memcpy((uint8_t*)_staging_buffer_ptr + _width * _height * 5/4 + j * _width/2,   avFrame->data[2] + j * avFrame->linesize[2], _width/2);
+                        memcpy((uint8_t*)_uploader->get_main() + _width * _height       + j * _width/2,   avFrame->data[1] + j * avFrame->linesize[1], _width/2);
+                        memcpy((uint8_t*)_uploader->get_main() + _width * _height * 5/4 + j * _width/2,   avFrame->data[2] + j * avFrame->linesize[2], _width/2);
                     }
                 }
             }
@@ -261,9 +222,9 @@ namespace vkd {
         return updated;
     }
 
-    void Ffmpeg::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void Ffmpeg::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
         _last_fence = fence;
-        submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 
     void Ffmpeg::scrub(const Frame& frame) {

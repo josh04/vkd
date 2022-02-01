@@ -2,12 +2,40 @@
 #include "buffer.hpp"
 #include "device.hpp"
 #include "memory.hpp"
+#include "image.hpp"
 #include "command_buffer.hpp"
+#include "memory/memory_manager.hpp"
+#include "memory/memory_pool.hpp"
 
 namespace vkd {
     Buffer::~Buffer() {
-        if (_buffer) { vkDestroyBuffer(_device->logical_device(), _buffer, nullptr); }
-        if (_memory) { vkFreeMemory(_device->logical_device(), _memory, nullptr); }
+        deallocate();
+    }
+
+    void Buffer::init(size_t size, VkBufferUsageFlags flags, VkMemoryPropertyFlags mem_prop_flags) {
+        _requested_size = size;
+        _buffer_usage_flags = flags;
+        _memory_flags = mem_prop_flags;
+
+        allocate();
+    }
+
+    void Buffer::allocate() {
+        _create(_requested_size, _buffer_usage_flags, _memory_flags);
+        _allocated = true;
+    }
+
+    void Buffer::deallocate() { 
+        if (_buffer) { 
+            vkDestroyBuffer(_device->logical_device(), _buffer, nullptr); 
+            _buffer = VK_NULL_HANDLE;
+        }
+        if (_memory) { 
+            _device->pool().deallocate(_memory);
+            _memory = VK_NULL_HANDLE;
+        }
+
+        _allocated = false;
     }
 
     VkBufferMemoryBarrier Buffer::barrier_info(VkPipelineStageFlags src_stage_mask, VkPipelineStageFlags dst_stage_mask) {
@@ -40,7 +68,6 @@ namespace vkd {
     }
 
     void Buffer::_create(size_t size, VkBufferUsageFlags buffer_usage_flags, VkMemoryPropertyFlags mem_prop_flags) {
-        _requested_size = size;
         VkBufferCreateInfo buffer_info = {};
         buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         buffer_info.size = size;
@@ -49,25 +76,65 @@ namespace vkd {
         VK_CHECK_RESULT(vkCreateBuffer(_device->logical_device(), &buffer_info, nullptr, &_buffer));
 		VkMemoryRequirements mem_reqs;
         vkGetBufferMemoryRequirements(_device->logical_device(), _buffer, &mem_reqs);
+        auto mem_index = find_memory_index(_device->memory_properties(), mem_reqs.memoryTypeBits, mem_prop_flags);
 
-		VkMemoryAllocateInfo memory_alloc_info = {};
-		memory_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        memory_alloc_info.memoryTypeIndex = find_memory_index(_device->memory_properties(), mem_reqs.memoryTypeBits, mem_prop_flags);
-        memory_alloc_info.allocationSize = mem_reqs.size;
         _size = mem_reqs.size;
 
-        VK_CHECK_RESULT(vkAllocateMemory(_device->logical_device(), &memory_alloc_info, nullptr, &_memory));
+        _memory = _device->pool().allocate(mem_reqs.size, mem_prop_flags, mem_index);
         VK_CHECK_RESULT(vkBindBufferMemory(_device->logical_device(), _buffer, _memory, 0));
 
         _descriptor.buffer = buffer();
         _descriptor.offset = 0;
-        _descriptor.range = _size;
+        _descriptor.range = _requested_size;
     }
 
     void Buffer::copy(Buffer& src, size_t sz, VkCommandBuffer buf) {
         VkBufferCopy copy_region = {};
         copy_region.size = sz;
         vkCmdCopyBuffer(buf, src.buffer(), _buffer, 1, &copy_region);
+    }
+
+    void Buffer::copy(VkCommandBuffer buf, Image& src, int offset, int xStart, int yStart, uint32_t width, uint32_t height) {
+
+        /*
+
+
+void vkCmdCopyImageToBuffer(
+    VkCommandBuffer                             commandBuffer,
+    VkImage                                     srcImage,
+    VkImageLayout                               srcImageLayout,
+    VkBuffer                                    dstBuffer,
+    uint32_t                                    regionCount,
+    const VkBufferImageCopy*                    pRegions);
+
+typedef struct VkBufferImageCopy {
+    VkDeviceSize                bufferOffset;
+    uint32_t                    bufferRowLength;
+    uint32_t                    bufferImageHeight;
+    VkImageSubresourceLayers    imageSubresource;
+    VkOffset3D                  imageOffset;
+    VkExtent3D                  imageExtent;
+} VkBufferImageCopy;
+
+        */
+        VkBufferImageCopy region;
+        region.bufferOffset = offset;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        
+        region.imageOffset = {xStart, yStart, 0};
+        region.imageExtent = {
+            width,
+            height,
+            1
+        };
+
+        vkCmdCopyImageToBuffer(buf, src.image(), src.layout(), _buffer, 1, &region);
     }
 
     void Buffer::stage(const std::vector<std::pair<void *, size_t>>& data) {
@@ -93,7 +160,7 @@ namespace vkd {
     }
 
     void StagingBuffer::create(size_t size, VkBufferUsageFlags extra_flags) {
-        _create(size, extra_flags | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        init(size, extra_flags | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     }
 
     void * StagingBuffer::map() {
@@ -107,21 +174,21 @@ namespace vkd {
     }
 
     void VertexBuffer::create(size_t size) {
-        _create(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        init(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
 
     void IndexBuffer::create(size_t size) {
-        _create(size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        init(size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
 
     // following some awkward paths from the og sample here
     void UniformBuffer::create(size_t sz) {
         memset(&_descriptor, 0, sizeof(VkDescriptorBufferInfo));
-        _create(sz, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        init(sz, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     }
 
     void StorageBuffer::create(size_t sz, VkBufferUsageFlags extra_flags) {
         memset(&_descriptor, 0, sizeof(VkDescriptorBufferInfo));
-        _create(sz, extra_flags | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        init(sz, extra_flags | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
 }

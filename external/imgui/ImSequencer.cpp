@@ -51,8 +51,8 @@ namespace ImSequencer
 
       bool popupOpened = false;
       int sequenceCount = sequence->GetItemCount();
-      if (!sequenceCount)
-         return false;
+      //if (!sequenceCount)
+      //   return false;
       ImGui::BeginGroup();
 
       ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -61,7 +61,7 @@ namespace ImSequencer
       int firstFrameUsed = firstFrame ? *firstFrame : 0;
 
 
-      int controlHeight = sequenceCount * ItemHeight;
+      int controlHeight = max(sequenceCount, 1) * ItemHeight;
       for (int i = 0; i < sequenceCount; i++)
          controlHeight += int(sequence->GetCustomHeight(i));
       int frameCount = ImMax(sequence->GetFrameMax() - sequence->GetFrameMin(), 1);

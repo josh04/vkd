@@ -109,6 +109,10 @@
         "xloctime": "cpp",
         "xmemory": "cpp",
         "xstddef": "cpp",
-        "xtr1common": "cpp"
+        "xtr1common": "cpp",
+        "filesystem": "cpp",
+        "any": "cpp",
+        "cfenv": "cpp",
+        "scoped_allocator": "cpp"
     }
 }

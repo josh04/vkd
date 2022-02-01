@@ -10,6 +10,7 @@
 #include "compute_pipeline.hpp"
 
 #include "graph_exception.hpp"
+#include "vkd_dll.h"
 
 #include <glm/glm.hpp>
 
@@ -23,15 +24,22 @@ namespace vkd {
     class DescriptorLayout;
     class ComputeShader;
     class CommandBuffer;
+    class EngineNode;
 
-    class Kernel {
+    class VKDEXPORT Kernel {
     public:
         Kernel(std::shared_ptr<Device> device, const std::string& param_hash) : _device(device), _param_hash(param_hash) {}
         ~Kernel() = default;
         Kernel(Kernel&&) = delete;
         Kernel(const Kernel&) = delete;
 
+        static std::shared_ptr<Kernel> make(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes);
+        static std::shared_ptr<Kernel> make(EngineNode& node, std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes);
+
+        void init(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = {16, 16, 1});
+        void init(EngineNode& node, std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes);
         void init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = {16, 16, 1});
+        void init(std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes);
 
         std::shared_ptr<DescriptorPool> make_pool();
 
@@ -82,12 +90,19 @@ namespace vkd {
             if (size + offset > _push_constant_size) {
                 throw GraphException("Param out of range for push constant");
             }
+
+            if (size == 0) {
+                throw std::runtime_error("Push constant size zero.");
+            }
             
             vkCmdPushConstants(buf, _full_pipeline.pipeline->layout()->get(), VK_SHADER_STAGE_COMPUTE_BIT, (uint32_t)offset, (uint32_t)size, data);
         }
 
         void set_arg(int32_t index, std::shared_ptr<Buffer> buffer);
         void set_arg(int32_t index, std::shared_ptr<Image> buffer);
+
+        const auto& arg_names() const { return _shader->binding_names(); }
+        int arg_index_for_name(const std::string& name) const { return _shader->index_for_name(name); }
 
         void set_offset(int32_t x, int32_t y, int32_t z, int32_t w);
         void set_offset(int32_t x, int32_t y, int32_t z) { set_offset(x, y, z, 0); }

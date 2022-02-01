@@ -30,7 +30,7 @@ namespace vkd {
         void init();
         bool update(ExecutionType type);
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height);
-        std::vector<VkSemaphore> semaphores();
+        std::vector<SemaphorePtr> semaphores();
         void execute(ExecutionType type);
         void ui();
         void finish();
@@ -48,7 +48,7 @@ namespace vkd {
         auto frame() const { return _frame; }
     private:
         std::shared_ptr<Device> _device = nullptr;
-        FencePtr _fence;
+        FencePtr _fence = nullptr;
         std::vector<std::shared_ptr<vkd::EngineNode>> _nodes;
         std::vector<std::shared_ptr<vkd::EngineNode>> _terminals;
         ShaderParamMap _params;

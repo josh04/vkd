@@ -76,7 +76,8 @@ namespace vkd {
                             }
                         }
                         real_node->graph_inputs(inputs);
-
+                        real_node->output_count(fake_node->outputs().size());
+                        // to set init-vars
                         real_node->update_params(fake_node->params());
                     }
                     
@@ -100,6 +101,8 @@ namespace vkd {
         // still do this in case the errors are resolvable through configuration
         for (auto&& fake_node : _nodes) {
             if (fake_node->real_node()) {
+                // to allow kernels to register and be then set
+                fake_node->real_node()->update_params(fake_node->params());
                 fake_node->set_params(fake_node->real_node()->params());
             }
         }

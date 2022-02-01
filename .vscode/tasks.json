@@ -20,6 +20,7 @@
             "label": "ninja",
             "type": "shell",
             "command": "ninja",
+            "args": ["install"],
             "options": {
                 "cwd": "${workspaceRoot}/cmake"
             },

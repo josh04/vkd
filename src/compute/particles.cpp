@@ -36,7 +36,7 @@ namespace vkd {
         //_compute_uniform_buffer->unmap();
 
         _compute_storage_buffer = std::make_shared<Buffer>(_device);
-        _compute_storage_buffer->_create(storage_buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        _compute_storage_buffer->init(storage_buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         _compute_storage_buffer->stage({{(void *)particle_buffer.data(), particle_buffer.size()}});
 
@@ -63,14 +63,14 @@ namespace vkd {
 		vkCmdDispatch(_compute_command_buffer, PARTICLE_COUNT / 256, 1, 1);
         end_command_buffer(_compute_command_buffer);
 
-        _compute_complete = create_semaphore(_device->logical_device());
+        _compute_complete = Semaphore::make(_device);
     }
 
     void Particles::post_init()
     {
     }
 
-    void Particles::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
+    void Particles::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
 		// Wait for rendering finished
 		VkPipelineStageFlags wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
@@ -80,11 +80,14 @@ namespace vkd {
 		submit_info.commandBufferCount = 1;
 		submit_info.pCommandBuffers = &_compute_command_buffer;
 		submit_info.waitSemaphoreCount = (wait_semaphore != VK_NULL_HANDLE) ? 1 : 0;
-		submit_info.pWaitSemaphores = (wait_semaphore != VK_NULL_HANDLE) ? &wait_semaphore : nullptr;
+		submit_info.pWaitSemaphores = (wait_semaphore != VK_NULL_HANDLE) ? &wait_semaphore->get() : nullptr;
 		submit_info.pWaitDstStageMask = &wait_stage_mask;
 		submit_info.signalSemaphoreCount = 1;
-		submit_info.pSignalSemaphores = &_compute_complete;
-		VK_CHECK_RESULT(vkQueueSubmit(_device->compute_queue(), 1, &submit_info, VK_NULL_HANDLE));
+		submit_info.pSignalSemaphores = &_compute_complete->get();
+		{
+			std::lock_guard<std::mutex> lock(_device->queue_mutex());
+			VK_CHECK_RESULT(vkQueueSubmit(_device->compute_queue(), 1, &submit_info, VK_NULL_HANDLE));
+		}
 
 	    static float timer = 0.0f;
 	    static float animStart = 20.0f;

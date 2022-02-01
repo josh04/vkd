@@ -29,7 +29,7 @@ namespace vkd {
 
 		VkDeviceSize sand_add_size = _width * sizeof(uint32_t);
         _sand_add_locations = std::make_shared<Buffer>(_device);
-        _sand_add_locations->_create(sand_add_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        _sand_add_locations->init(sand_add_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         
         _add_loc_stage = std::make_shared<StagingBuffer>(_device);
         _add_loc_stage->create(sand_add_size);
@@ -38,22 +38,22 @@ namespace vkd {
         update(ExecutionType::UI);
 
         _sand_locations = std::make_shared<vkd::Image>(_device);
-        _sand_locations->create_image(VK_FORMAT_R32G32B32A32_UINT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        _sand_locations->create_image(VK_FORMAT_R32G32B32A32_UINT, {_width, _height}, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         _sand_locations->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _sand_locations->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
         _sand_locations_sc = std::make_shared<vkd::Image>(_device);
-        _sand_locations_sc->create_image(VK_FORMAT_R32G32B32A32_UINT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        _sand_locations_sc->create_image(VK_FORMAT_R32G32B32A32_UINT, {_width, _height}, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
         _sand_locations_sc->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _sand_locations_sc->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
         _sand_locations_scratch = std::make_shared<vkd::Image>(_device);
-        _sand_locations_scratch->create_image(VK_FORMAT_R32G32B32A32_UINT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        _sand_locations_scratch->create_image(VK_FORMAT_R32G32B32A32_UINT, {_width, _height}, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
         _sand_locations_scratch->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _sand_locations_scratch->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
         _sand_image = std::make_shared<vkd::Image>(_device);
-        _sand_image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, _width, _height, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+        _sand_image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, {_width, _height}, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
         _sand_image->allocate(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         _sand_image->create_view(VK_IMAGE_ASPECT_COLOR_BIT);
 
@@ -70,45 +70,38 @@ namespace vkd {
         _sand_clear = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_clear->init("shaders/compute/sand_clear.comp.spv", "main", {16, 16, 1});
         _sand_clear->set_arg(0, _sand_locations);
-        _sand_clear->update();
 
         _sand_add_bumpers = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_add_bumpers->init("shaders/compute/sand_add_bumpers.comp.spv", "main", {256, 1, 1});
         _sand_add_bumpers->set_arg(0, _sand_locations);
-        _sand_add_bumpers->update();
 
         _sand_bottom_bump = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_bottom_bump->init("shaders/compute/sand_bottom_bump.comp.spv", "main", {256, 1, 1});
         _sand_bottom_bump->set_arg(0, _sand_locations);
         _sand_bottom_bump->set_arg(1, _sand_locations_scratch);
         _sand_bottom_bump->set_arg(2, _sand_locations_sc);
-        _sand_bottom_bump->update();
 
         _sand_process = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_process->init("shaders/compute/sand_process.comp.spv", "main", {16, 16, 1});
         _sand_process->set_arg(0, _sand_locations);
         _sand_process->set_arg(1, _sand_locations_sc);
         _sand_process->set_arg(2, _sand_locations_scratch);
-        _sand_process->update();
         
         _sand_copy_stills = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_copy_stills->init("shaders/compute/sand_copy_stills.comp.spv", "main", {16, 16, 1});
         _sand_copy_stills->set_arg(0, _sand_locations);
         _sand_copy_stills->set_arg(1, _sand_locations_scratch);
-        _sand_copy_stills->update();
 
         _sand_add = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_add->init("shaders/compute/sand_add.comp.spv", "main", {16, 16, 1});
         _sand_add->set_arg(0, _sand_add_locations);
         _sand_add->set_arg(1, _sand_locations_scratch);
-        _sand_add->update();
 
         _sand_to_image = std::make_shared<Kernel>(_device, param_hash_name());
         _sand_to_image->init("shaders/compute/sand_to_image.comp.spv", "main", {16, 16, 1});
         register_params(*_sand_to_image);
         _sand_to_image->set_arg(0, _sand_locations_scratch);
         _sand_to_image->set_arg(1, _sand_image);
-        _sand_to_image->update();
 
         auto buf2 = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
 
@@ -118,9 +111,8 @@ namespace vkd {
         vkd::flush_command_buffer(_device->logical_device(), _device->compute_queue(), _device->command_pool(), buf2);
 
         _sand_clear->set_arg(0, _sand_locations_scratch);
-        _sand_clear->update();
 
-        _compute_complete = create_semaphore(_device->logical_device());
+        _compute_complete = Semaphore::make(_device);
     }
 
     void Sand::post_init()
@@ -190,7 +182,7 @@ namespace vkd {
         return update;
     }
 
-    void Sand::execute(ExecutionType type, VkSemaphore wait_semaphore, Fence * fence) {
-        submit_compute_buffer(_device->compute_queue(), _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Sand::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
     }
 }

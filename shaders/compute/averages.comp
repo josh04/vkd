@@ -1,0 +1,53 @@
+#version 450
+
+#define FLT_MAX 3.402823466e+38
+#define FLT_MIN 1.175494351e-38
+#define DBL_MAX 1.7976931348623158e+308
+#define DBL_MIN 2.2250738585072014e-308
+
+// Binding 0 : Position storage buffer
+layout(binding = 0, rgba32f) uniform image2D inputTex;
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+    int _scale;
+	float max_threshold;
+} push;
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 dim = imageSize(inputTex);
+    
+	ivec2 start = coord * push._scale;
+	ivec2 end = (coord + 1) * push._scale;
+	
+	float avg = 0.0f;
+	vec4 lum;
+	int count = 0;
+	float hmean = 0.0f;
+	float lmin = FLT_MAX;
+	float lmax = 0.0f;
+	
+	for (int y = start.y; y < end.y; ++y) {
+		for (int x = start.x; x < end.x; ++x) {
+			if (x <= dim.x && y <= dim.y) {
+                lum = imageLoad(inputTex, ivec2(x, y));
+				hmean += lum.x;
+				lmax = (lum.z < push.max_threshold) ? ( (lmax < lum.y) ? lum.y : lmax ) : lmax;
+				lmin = (lmin > lum.z) ? lum.z : lmin;
+				avg += lum.w;
+				++count;
+			}
+		}
+	}
+
+	if (count == 0) {
+		count = 1;
+	}
+	
+    imageStore(outputTex, coord, vec4(hmean / float(count), lmax, lmin, avg));
+}

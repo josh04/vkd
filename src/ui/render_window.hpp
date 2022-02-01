@@ -26,7 +26,9 @@ namespace vkd {
         void execute(Graph& graph);
 
         void open(bool set) { _open = set; }
+        bool open() const { return _open; }
         bool rendering() const { return _running_render; }
+
     private:
         void _execute(Graph& graph);
         Timeline& _timeline;
@@ -43,6 +45,13 @@ namespace vkd {
         glm::ivec2 _range = {0, 100};
 
         char _path[1024];
+
+        enum class Type {
+            Ffmpeg,
+            Exr
+        };
+
+        Type _type = Type::Ffmpeg;
 
     };
 }

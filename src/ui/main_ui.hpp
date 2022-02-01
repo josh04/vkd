@@ -2,6 +2,7 @@
         
 #include <memory>
 #include <map>
+#include <optional>
 
 #include "bin.hpp"
 #include "node_window.hpp"
@@ -9,6 +10,10 @@
 #include "performance.hpp"
 #include "preferences.hpp"
 #include "render_window.hpp"
+#include "memory_window.hpp"
+#include "inspector.hpp"
+
+#include "TaskScheduler.h"
 
 namespace vkd {
     class Graph;
@@ -28,7 +33,7 @@ namespace vkd {
         void add_node_graph(const Bin::Entry& entry);
 
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height);
-        std::vector<VkSemaphore> semaphores();
+        std::vector<SemaphorePtr> semaphores();
         void update();
         void execute();
 
@@ -45,8 +50,16 @@ namespace vkd {
         
         template<class Archive>
         void serialize(Archive& archive, const uint32_t version) {
-            if (version == 0) {
+            if (version >= 0) {
                 archive(_bin, _node_windows, _timeline, _execute_graph_flag, _performance, _vulkan_window_open, _node_window_id);
+            }
+            if (version >= 1) {
+                bool render_window = _render_window->open();
+                archive(render_window, _memory_window);
+                _render_window->open(render_window);
+            }
+            if (version >= 2) {
+                archive(_inspector);
             }
         }
     private:
@@ -60,24 +73,39 @@ namespace vkd {
         std::shared_ptr<Timeline> _timeline = nullptr;
         
         std::unique_ptr<vkd::Graph> _graph = nullptr;
-        std::vector<std::shared_ptr<vkd::EngineNode>> _draws;
+        std::shared_ptr<vkd::DrawFullscreen> _viewer_draw = nullptr;
+        int32_t _viewer_selection = 0;
         bool _execute_graph_flag = false;
 
         std::mutex _submitted_semaphore_mutex;
-        std::vector<VkSemaphore> _submitted_semaphores;
+        std::vector<SemaphorePtr> _submitted_semaphores;
 
         Performance _performance;
 
         ImGui::FileBrowser _load_dialog;
         ImGui::FileBrowser _save_dialog;
+        ImGui::FileBrowser _export_dialog;
 
         Preferences _preferences;
 
         std::unique_ptr<RenderWindow> _render_window;
+        std::unique_ptr<MemoryWindow> _memory_window;
+        std::unique_ptr<Inspector> _inspector;
 
         bool _vulkan_window_open = false;
         bool _has_quit = false;
 
         int32_t _node_window_id = 1;
+
+        std::optional<ExecutionType> _execution_to_run;
+        std::optional<std::string> _loaded_path;
+
+        std::string _current_loaded = "untitled";
+        std::unique_ptr<enki::TaskSet> _export_task = nullptr;
+        std::string _export_name = "";
+
+        std::deque<std::pair<std::string, std::string>> _popups;
+
+        bool _trigger_renderdoc = false;
     };
 }

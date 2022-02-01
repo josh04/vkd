@@ -5,11 +5,17 @@
 #include "vulkan/vulkan.h"
 
 #include "instance.hpp"
+#include "memory/memory_manager.hpp"
+
+#include "vkd_dll.h"
 
 namespace vkd {
-    class Device {
+    class HostCache;
+    class MemoryManager;
+    class MemoryPool;
+    class VKDEXPORT Device {
     public:
-        Device(std::shared_ptr<Instance> instance) : _instance(instance) {}
+        Device(std::shared_ptr<Instance> instance);
         ~Device();
         Device(Device&&) = delete;
         Device(const Device&) = delete;
@@ -22,6 +28,7 @@ namespace vkd {
         auto logical_device() const { return _logical_device; }
         auto queue() const { return _queue; }
         auto queue_index() const { return _queue_index; }
+        auto& queue_mutex() { return _queue_mutex; }
         auto compute_queue() const { return _queue; }
         auto compute_queue_index() const { return _queue_index; }
         auto command_pool() { return _command_pool; }
@@ -35,12 +42,17 @@ namespace vkd {
         const auto& features() const { return _physical_features.features; }
         const auto& ext_8bit_features() const { return _8bit_features; }
         const auto& ext_16bit_features() const { return _16bit_features; }
+
+        auto& host_cache() { return *_host_cache; }
+        auto& memory_manager() { return *_memory_manager; }
+        auto& pool() { return *_memory_pool; }
     private:
         void populate_physical_device_props(VkPhysicalDevice device);
         std::shared_ptr<Instance> _instance;
         VkPhysicalDevice _physical_device;
         VkDevice _logical_device;
         static constexpr uint32_t _queue_index = 0;
+        std::mutex _queue_mutex;
         VkQueue _queue;
         VkCommandPool _command_pool;
 
@@ -56,5 +68,8 @@ namespace vkd {
 
         PFN_vkGetPhysicalDeviceFeatures2KHR ext_vkGetPhysicalDeviceFeatures2KHR;
 
+        std::unique_ptr<HostCache> _host_cache;
+        std::unique_ptr<MemoryManager> _memory_manager;
+        std::unique_ptr<MemoryPool> _memory_pool;
     };
 }

@@ -8,6 +8,7 @@
 #include "cereal/types/atomic.hpp"
 #include "cereal/archives/binary.hpp"
 
+#include <memory>
 #include <mutex>
 
 #include "glm/glm.hpp"
@@ -63,7 +64,8 @@ namespace vkd {
         p_uvec2,
         p_uvec4,
         p_string,
-        p_frame
+        p_frame,
+        p_bool
     };
 
     struct Frame {
@@ -76,6 +78,9 @@ namespace vkd {
     static bool operator==(const Frame& lhs, const Frame& rhs) {
         return lhs.index == rhs.index;
     }
+    static bool operator!=(const Frame& lhs, const Frame& rhs) {
+        return !(lhs.index == rhs.index);
+    }
     
     template<class Archive>
     void serialize(Archive & archive, vkd::Frame& vec, const uint32_t version) {
@@ -87,12 +92,16 @@ namespace vkd {
     template<typename P>
     class Parameter;
 
-    class ParameterInterface {
+    class ParameterInterface : public std::enable_shared_from_this<ParameterInterface> {
     public:
         virtual ~ParameterInterface() {}
 
         template<typename R>
+        const Parameter<R>& as() const { return *dynamic_cast<const Parameter<R> *>(this); }
+        template<typename R>
         Parameter<R>& as() { return *dynamic_cast<Parameter<R> *>(this); }
+        template<typename R>
+        std::shared_ptr<Parameter<R>> as_ptr() { return std::dynamic_pointer_cast<Parameter<R>>(shared_from_this()); }
 
         virtual ParameterType type() const = 0;
         virtual void * data() = 0;
@@ -100,23 +109,46 @@ namespace vkd {
         virtual size_t offset() = 0;
         virtual std::string name() const = 0;
 
+        int order() const { return _order; }
+        void order(int i) { _order = i; };
+
         virtual void set_from(const std::shared_ptr<ParameterInterface>& rhs) = 0;
 
-        void set_changed() { _changed = true; }
-        bool changed() { auto ch = _changed; _changed = false; return ch; }
+        void set_changed() { _version_index = _execution_index + 1; }
+        bool changed() const { return _version_index > _execution_index; }
+        bool changed_last() const { return _version_index == _execution_index; }
+        void reset_changed() { _execution_index++; }
 
         virtual const std::set<std::string>& tags() const = 0;
+        virtual void tags(const std::set<std::string>& t) = 0;
         virtual void tag(const std::string& t) = 0;
+
+        virtual void enum_names(std::vector<std::string> names) = 0;
+        virtual const std::vector<std::string>& enum_names() const = 0;
+
+        auto&& ui_changed_last_tick() { return _ui_changed_last_tick; }
 
         template <class Archive>
         void serialize(Archive& ar, const uint32_t version)
         {
-            if (version == 0) {
+            if (version >= 0) {
                 ar(_changed);
+            }
+            if (version >= 1) {
+                ar(_order);
+            }
+            if (version >= 2) {
+                ar(_version_index, _execution_index);
             }
         }
     protected:
         bool _changed = true;
+        int64_t _version_index = 0;
+        int64_t _execution_index = 0;
+
+        bool _ui_changed_last_tick = false;
+
+        int _order = 0;
     };
 
     template<typename P>
@@ -175,6 +207,11 @@ namespace vkd {
             } else if constexpr(std::is_same<P, Frame>::value) {
                 _type = Type::p_frame;
                 set(Frame{0});
+            } else if constexpr(std::is_same<P, bool>::value) {
+                _type = Type::p_bool;
+                min(false);
+                max(true);
+                set(false);
             } 
         }
         ~Parameter() = default;
@@ -196,10 +233,12 @@ namespace vkd {
                 min(glm::min(p, min()));
                 max(glm::max(p, max()));
             }
-            _value = p;
-            _data.resize(sizeof(P));
-            memcpy(_data.data(), &p, sizeof(P));
-            _changed = true;
+            _data.resize(sizeof(P)); // so that _data is always the correct size
+            if (_value != p) {
+                _value = p;
+                memcpy(_data.data(), &p, sizeof(P));
+                set_changed();
+            }
         }
 
         void set(P p) {
@@ -214,7 +253,8 @@ namespace vkd {
                 static_assert("Cannot set default on frame parameter!");
             }
             if (!_set_default) {
-                set(p);
+                set_force(p);
+                _default = p;
                 _set_default = true;
             }
         }
@@ -228,12 +268,16 @@ namespace vkd {
         void set_from(const std::shared_ptr<ParameterInterface>& rhs) override { set_from(rhs->as<P>()); }
 
         P get() const { return _value; }
+        P get_default() const { return _default; }
 
         P min() const { return _min; }
         P max() const { return _max; }
 
         void min(P m) { _min = m; }
         void max(P m) { _max = m; }
+
+        void soft_min(P m) { _min = glm::min(m, _min); }
+        void soft_max(P m) { _max = glm::max(m, _max); }
 
         Type type() const override { return _type; }
         void * data() override { return _data.data(); }
@@ -246,13 +290,20 @@ namespace vkd {
         std::string name() const override { return _name; }
 
         const std::set<std::string>& tags() const override { return _tags; }
+        void tags(const std::set<std::string>& t) override { _tags.insert(t.begin(), t.end()); } 
         void tag(const std::string& t) override { _tags.insert(t); } 
+
+        void enum_names(std::vector<std::string> names) override { if constexpr (std::is_same<P, int>::value || std::is_same<P, unsigned int>::value) { _enum_names = std::move(names); } }
+        const std::vector<std::string>& enum_names() const override { return _enum_names; }
         
         template <class Archive>
         void serialize(Archive& ar, const uint32_t version)
         {
-            if (version == 0) {
+            if (version >= 0) {
                 ar(cereal::base_class<ParameterInterface>(this), _type, _value, _min, _max, _data, _offset, _name, _tags, _set_default);
+            }
+            if (version >= 1) {
+                ar(_enum_names);
             }
         }
     private:
@@ -260,10 +311,13 @@ namespace vkd {
         P _value;
         P _min;
         P _max;
+        P _default;
         std::vector<uint8_t> _data;
         size_t _offset;
         std::string _name;
         std::set<std::string> _tags;
+
+        std::vector<std::string> _enum_names;
 
         std::atomic_bool _set_default = false;
     };
@@ -277,6 +331,8 @@ namespace vkd {
         static std::shared_ptr<ParameterInterface> get(ParameterType p, const std::string& name);
         static bool remove(ParameterType p, const std::string& name);
 
+        static void reset_changed() { _singleton->_reset_changed(); }
+
         static std::string make_hash(ParameterType p, const std::string& name);
     private:
         static void _make();
@@ -284,6 +340,8 @@ namespace vkd {
         bool _has(const std::string& hash);
         std::shared_ptr<ParameterInterface> _get(const std::string& hash);
         bool _remove(const std::string& hash);
+
+        void _reset_changed() { for (auto&& pair : _params) { pair.second->reset_changed(); } }
     
         ParameterCache() = default;
 
@@ -291,74 +349,4 @@ namespace vkd {
         static std::mutex _param_mutex;
         std::map<std::string, std::shared_ptr<ParameterInterface>> _params;
     };
-
-    template<ParameterType T> struct _ptype;
-    template<> struct _ptype<ParameterType::p_float> { using type = float; };
-    template<> struct _ptype<ParameterType::p_int> { using type = int; };
-    template<> struct _ptype<ParameterType::p_uint> { using type = unsigned int; };
-    template<> struct _ptype<ParameterType::p_vec2> { using type = glm::vec2; };
-    template<> struct _ptype<ParameterType::p_vec4> { using type = glm::vec4; };
-    template<> struct _ptype<ParameterType::p_ivec2> { using type = glm::ivec2; };
-    template<> struct _ptype<ParameterType::p_ivec4> { using type = glm::ivec4; };
-    template<> struct _ptype<ParameterType::p_uvec2> { using type = glm::uvec2; };
-    template<> struct _ptype<ParameterType::p_uvec4> { using type = glm::uvec4; };
-    template<> struct _ptype<ParameterType::p_string> { using type = std::string; };
-    template<> struct _ptype<ParameterType::p_frame> { using type = Frame; };
-
-    template<typename T> struct _qtype;
-    template<> struct _qtype<float> { static constexpr ParameterType type = ParameterType::p_float; };
-    template<> struct _qtype<int> { static constexpr ParameterType type = ParameterType::p_int; };
-    template<> struct _qtype<unsigned int> { static constexpr ParameterType type = ParameterType::p_uint; };
-    template<> struct _qtype<glm::vec2> { static constexpr ParameterType type = ParameterType::p_vec2; };
-    template<> struct _qtype<glm::vec4> { static constexpr ParameterType type = ParameterType::p_vec4; };
-    template<> struct _qtype<glm::ivec2> { static constexpr ParameterType type = ParameterType::p_ivec2; };
-    template<> struct _qtype<glm::ivec4> { static constexpr ParameterType type = ParameterType::p_ivec4; };
-    template<> struct _qtype<glm::uvec2> { static constexpr ParameterType type = ParameterType::p_uvec2; };
-    template<> struct _qtype<glm::uvec4> { static constexpr ParameterType type = ParameterType::p_uvec4; };
-    template<> struct _qtype<std::string> { static constexpr ParameterType type = ParameterType::p_string; };
-    template<> struct _qtype<Frame> { static constexpr ParameterType type = ParameterType::p_frame; };
-
-    template<ParameterType T> 
-    std::shared_ptr<ParameterInterface> make_param(const std::string& hash, const std::string& name, size_t offset) { 
-        if (ParameterCache::has(T, hash + name)) {
-            auto param = ParameterCache::get(T, hash + name);
-            param->set_changed();
-            return param;
-        }
-        auto param = std::make_shared<Parameter<typename _ptype<T>::type>>(); 
-        param->name(name);
-        param->offset(offset);
-        ParameterCache::add(T, hash + name, param);
-        return param;
-    }
-    template<typename T> 
-    std::shared_ptr<ParameterInterface> make_param(const std::string& hash, const std::string& name, size_t offset) { 
-        return make_param<_qtype<T>::type>(hash, name, offset);
-    }
 }
-/*
-CEREAL_REGISTER_TYPE(vkd::ParameterInterface)
-CEREAL_REGISTER_TYPE(vkd::Parameter<float>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<int>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<unsigned int>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<glm::vec2>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<glm::vec4>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<glm::ivec2>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<glm::ivec4>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<glm::uvec2>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<glm::uvec4>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<std::string>)
-CEREAL_REGISTER_TYPE(vkd::Parameter<vkd::Frame>)
-*/
-/*
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<float>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<int>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<unsigned int>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::vec2>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::vec4>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::ivec2>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::ivec4>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::uvec2>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<glm::uvec4>)
-CEREAL_REGISTER_POLYMORPHIC_RELATION(vkd::ParameterInterface, vkd::Parameter<std::string>)
-*/
