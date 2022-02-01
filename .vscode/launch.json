@@ -43,7 +43,7 @@
             ]
         },
         {
-            "name": "video (mac 2)",
+            "name": "app (mac 2)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-app",
@@ -67,10 +67,27 @@
             "MIMode": "lldb"
         },
         {
-            "name": "demo (win)",
+            "name": "app (win)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-app.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin/",
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "photo (win)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-photo.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/cmake/bundle/release/bin/",
