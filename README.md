@@ -165,5 +165,5 @@ Project Link: [https://github.com/josh04/vkd](https://github.com/josh04/vkd)
 [issues-shield]: https://img.shields.io/github/issues/josh04/vkd.svg?style=for-the-badge
 [issues-url]: https://github.com/josh04/vkd/issues
 [product-screenshot]: screenshots/vkdcustom.png
-[product-screenshot2]: screenshots/ocio2.png
-[product-screenshot3]: screenshots/vkd3.png
+[product-screenshot2]: screenshots/sc2.png
+[product-screenshot3]: screenshots/sc1.png
