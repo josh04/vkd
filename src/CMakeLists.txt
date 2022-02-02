@@ -65,7 +65,7 @@ add_subdirectory(outputs ${CMAKE_CURRENT_BINARY_DIR}/outputs)
 
 target_compile_definitions(vkd PRIVATE LIBVKD_EXPORTS)
 
-target_include_directories(vkd PUBLIC ../include .)
+target_include_directories(vkd PUBLIC ../include . ../external/stb)
 add_dependencies(vkd spirv-shaders copy_tex)
 
 if (WIN32)
@@ -76,7 +76,7 @@ if (WIN32)
     endif()
 endif()
 
-target_link_libraries(vkd PUBLIC SPIRV glslang OpenColorIO::OpenColorIO tinyxml2 spirv-reflect-static imgui sdl2 platform_folders ${CMAKE_DL_LIBS} ktx glm::glm Vulkan::Vulkan enkiTS Imath::Imath OpenEXR::OpenEXRCore OpenEXR::OpenEXR libraw::libraw png)
+target_link_libraries(vkd PUBLIC SPIRV glslang OpenColorIO::OpenColorIO tinyxml2 spirv-reflect-static imgui sdl2 cereal::cereal ghc_filesystem platform_folders ${CMAKE_DL_LIBS} ktx glm::glm Vulkan::Vulkan enkiTS Imath::Imath OpenEXR::OpenEXRCore OpenEXR::OpenEXR libraw::libraw png)
 target_link_libraries(vkd PUBLIC FFMPEG::avcodec FFMPEG::avformat FFMPEG::avutil FFMPEG::swscale)
 
 target_include_directories(vkd PRIVATE ../cmake/libpng)

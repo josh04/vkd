@@ -85,6 +85,9 @@ install(DIRECTORY ../external/aces_1.2/ DESTINATION bin/aces_1.2)
 if(NOT APPLE AND UNIX)
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -Wno-psabi)
 endif()
+if(WIN32)
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} /EHsc)
+endif()
 
 set(ENABLE_RAWSPEED ON CACHE BOOL "" FORCE)
 option(ENABLE_RAWSPEED             "Build library with extra RawSpeed codec support (default=OFF)"                ON)
@@ -119,12 +122,18 @@ add_subdirectory(../external/glslang ${CMAKE_BINARY_DIR}/glslang)
 add_subdirectory(../external/tinyxml2 ${CMAKE_BINARY_DIR}/tinyxml2)
 add_subdirectory(../external/glm ${CMAKE_BINARY_DIR}/glm)
 add_subdirectory(../external/PlatformFolders ${CMAKE_BINARY_DIR}/PlatformFolders) 
+set(SKIP_PERFORMANCE_COMPARISON ON)
+set(JUST_INSTALL_CEREAL ON)
+add_subdirectory(../external/cereal ${CMAKE_BINARY_DIR}/cereal)
 set(BUILD_SHARED_LIBS ${BUILD_ST})
 
 add_subdirectory(../external/LibRaw-cmake ${CMAKE_BINARY_DIR}/LibRaw)
 
+add_subdirectory(../external/filesystem ${CMAKE_BINARY_DIR}/filesystem)
+
 add_subdirectory(../external/ktx ${CMAKE_BINARY_DIR}/ktx)
 add_subdirectory(../external/Imath ${CMAKE_BINARY_DIR}/Imath)
+
 
 set(IMATH_HEADER_ONLY_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/Imath/config ${CMAKE_BINARY_DIR}/../external/Imath/src/Imath)
 

@@ -31,3 +31,12 @@
 [submodule "external/libpng"]
 	path = external/libpng
 	url = https://github.com/glennrp/libpng
+[submodule "external/filesystem"]
+	path = external/filesystem
+	url = https://github.com/gulrak/filesystem
+[submodule "external/cereal"]
+	path = external/cereal
+	url = https://github.com/USCiLab/cereal
+[submodule "stb"]
+	path = external/stb
+	url = https://github.com/nothings/stb
