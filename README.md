@@ -77,15 +77,15 @@ Most dependencies are included in the repository and will build alongside the ma
 1. Install `cmake` and `ninja`
 2. Clone the repository
    ```sh
-   git clone https://github.com/josh04/vkd.git
+   git clone --recurse-submodules https://github.com/josh04/vkd.git
    ```
 3. Navigate to the build directory
    ```sh
-   cd vkd/build
+   cd vkd/cmake
    ```
 4. Configure using `cmake`
    ```sh
-   cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=TRUE ..
+   cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=TRUE .
    ```
 5. Build using `ninja`
    ```sh
