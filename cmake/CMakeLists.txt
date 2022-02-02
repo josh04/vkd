@@ -80,13 +80,15 @@ elseif(APPLE)
   install(DIRECTORY ../../train/externals/SDL2.framework DESTINATION lib)
 endif()
 
+if (EXISTS ../external/aces_1.2/)
 install(DIRECTORY ../external/aces_1.2/ DESTINATION bin/aces_1.2)
+endif ()
 
 if(NOT APPLE AND UNIX)
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -Wno-psabi)
 endif()
 if(WIN32)
-set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} /EHsc)
+#set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} /EHsc)
 endif()
 
 set(ENABLE_RAWSPEED ON CACHE BOOL "" FORCE)
@@ -110,14 +112,19 @@ add_subdirectory(../external/enkiTS ${CMAKE_BINARY_DIR}/enkiTS)
 
 target_include_directories(enkiTS PUBLIC "../external/enkiTS/src")
 
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 set(SPIRV_REFLECT_EXECUTABLE OFF)
 set(SPIRV_REFLECT_EXAMPLES OFF)
 set(SPIRV_REFLECT_STATIC_LIB ON)
+set(ENABLE_RTTI ON)
+set(ENABLE_EXCEPTIONS ON)
 
 add_subdirectory(../external/spirv-reflect ${CMAKE_BINARY_DIR}/spirv-reflect)
 
 set(BUILD_ST ${BUILD_SHARED_LIBS})
 set(BUILD_SHARED_LIBS OFF)
+set(BUILD_EXTERNAL OFF)
+set(ENABLE_GLSLANG_BINARIES OFF)
 add_subdirectory(../external/glslang ${CMAKE_BINARY_DIR}/glslang)
 add_subdirectory(../external/tinyxml2 ${CMAKE_BINARY_DIR}/tinyxml2)
 add_subdirectory(../external/glm ${CMAKE_BINARY_DIR}/glm)
@@ -127,6 +134,7 @@ set(JUST_INSTALL_CEREAL ON)
 add_subdirectory(../external/cereal ${CMAKE_BINARY_DIR}/cereal)
 set(BUILD_SHARED_LIBS ${BUILD_ST})
 
+set(LIBRAW_PATH "${CMAKE_BINARY_DIR}/../external/LibRaw" CACHE STRING "")
 add_subdirectory(../external/LibRaw-cmake ${CMAKE_BINARY_DIR}/LibRaw)
 
 add_subdirectory(../external/filesystem ${CMAKE_BINARY_DIR}/filesystem)
