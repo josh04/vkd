@@ -28,7 +28,7 @@
 		std::stringstream strm; \
 		strm << "Error: VkResult is \"" << vkd::error_string(_RES_) << " (" << _RES_ << ")" << "\" in " << __FILE__ << " at line " << __LINE__; \
 		std::cout << strm.str() << std::endl; \
-		assert(_RES == VK_SUCCESS); \
+		assert(_RES_ == VK_SUCCESS); \
 	}																									\
 }
 #define VK_CHECK_RESULT_TIMEOUT(f)																				\

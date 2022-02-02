@@ -103,18 +103,35 @@ else(CMAKE_BUILD_TYPE MATCHES Debug)
     set(BUNDLE_DIR release)
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
-add_subdirectory(../external/enkiTS-1.10 ${CMAKE_BINARY_DIR}/enkiTS)
+add_subdirectory(../external/enkiTS ${CMAKE_BINARY_DIR}/enkiTS)
+
+target_include_directories(enkiTS PUBLIC "../external/enkiTS/src")
+
+set(SPIRV_REFLECT_EXECUTABLE OFF)
+set(SPIRV_REFLECT_EXAMPLES OFF)
+set(SPIRV_REFLECT_STATIC_LIB ON)
+
 add_subdirectory(../external/spirv-reflect ${CMAKE_BINARY_DIR}/spirv-reflect)
-add_subdirectory(../external/tinyxml2 ${CMAKE_BINARY_DIR}/tinyxml2)
+
+set(BUILD_ST ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(../external/glslang ${CMAKE_BINARY_DIR}/glslang)
+add_subdirectory(../external/tinyxml2 ${CMAKE_BINARY_DIR}/tinyxml2)
 add_subdirectory(../external/glm ${CMAKE_BINARY_DIR}/glm)
+add_subdirectory(../external/PlatformFolders ${CMAKE_BINARY_DIR}/PlatformFolders) 
+set(BUILD_SHARED_LIBS ${BUILD_ST})
+
+add_subdirectory(../external/LibRaw-cmake ${CMAKE_BINARY_DIR}/LibRaw)
+
 add_subdirectory(../external/ktx ${CMAKE_BINARY_DIR}/ktx)
-add_subdirectory(../external/sago ${CMAKE_BINARY_DIR}/sago)
 add_subdirectory(../external/Imath ${CMAKE_BINARY_DIR}/Imath)
+
+set(IMATH_HEADER_ONLY_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/Imath/config ${CMAKE_BINARY_DIR}/../external/Imath/src/Imath)
+
 add_subdirectory(../external/openexr ${CMAKE_BINARY_DIR}/openexr)
 add_subdirectory(../external/libpng ${CMAKE_BINARY_DIR}/libpng)
-add_subdirectory(../external/LibRaw ${CMAKE_BINARY_DIR}/LibRaw)
 add_subdirectory(../external/imgui ${CMAKE_BINARY_DIR}/imgui)
+
 add_subdirectory(../shaders ${CMAKE_BINARY_DIR}/shaders)
 add_subdirectory(../textures ${CMAKE_BINARY_DIR}/textures)
 add_subdirectory(../src ${CMAKE_BINARY_DIR}/src)

@@ -1,0 +1,33 @@
+[submodule "external/enkiTS"]
+	path = external/enkiTS
+	url = https://github.com/dougbinks/enkiTS
+[submodule "external/glm"]
+	path = external/glm
+	url = https://github.com/g-truc/glm
+[submodule "external/glslang"]
+	path = external/glslang
+	url = https://github.com/KhronosGroup/glslang
+[submodule "external/SPIRV-Reflect"]
+	path = external/SPIRV-Reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect
+[submodule "external/LibRaw-cmake"]
+	path = external/LibRaw-cmake
+	url = https://github.com/LibRaw/LibRaw-cmake.git
+[submodule "external/LibRaw"]
+	path = external/LibRaw
+	url = https://github.com/LibRaw/LibRaw.git
+[submodule "external/tinyxml2"]
+	path = external/tinyxml2
+	url = https://github.com/leethomason/tinyxml2
+[submodule "external/PlatformFolders"]
+	path = external/PlatformFolders
+	url = https://github.com/sago007/PlatformFolders/
+[submodule "external/Imath"]
+	path = external/Imath
+	url = https://github.com/AcademySoftwareFoundation/Imath
+[submodule "external/openexr"]
+	path = external/openexr
+	url = https://github.com/AcademySoftwareFoundation/openexr
+[submodule "external/libpng"]
+	path = external/libpng
+	url = https://github.com/glennrp/libpng
