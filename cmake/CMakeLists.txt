@@ -76,7 +76,7 @@ if(WIN32)
   install(FILES ../external/ocio/win32/bin/OpenColorIO_2_2.dll DESTINATION bin)
 elseif(APPLE)
   install(FILES ../external/ocio/mac/lib/libOpenColorIO.2.2.dylib DESTINATION lib)
-  install(FILES LibRaw/libraw.21.dylib LibRaw/libraw.dylib LibRaw/libraw.21.0.0.dylib DESTINATION lib)
+  install(FILES LibRaw/libraw.22.dylib LibRaw/libraw.dylib LibRaw/libraw.22.0.0.dylib DESTINATION lib)
   install(DIRECTORY ../../train/externals/SDL2.framework DESTINATION lib)
 endif()
 
