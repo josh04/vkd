@@ -1,0 +1,34 @@
+#version 450
+
+// Binding 0 : Position storage buffer
+layout(std430, binding = 0) buffer Buf 
+{
+   uint image[];
+};
+layout(binding = 1, rgba32f) uniform image2D outputTex;
+
+layout (local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout (push_constant) uniform PushConstants {
+    ivec4 vkd_offset;
+} push;
+
+uint uint8_buffer(int coord_x) {
+    int xoff = coord_x % 4;
+    uint y = image[(coord_x - xoff) / 4];
+    uint ret = (y >> (8 * xoff)) & 0xFF;
+    return ret;
+}
+
+void main() 
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + push.vkd_offset.xy;
+    ivec2 dim = imageSize(outputTex);
+
+    uint r = uint8_buffer((dim.x * coord.y + coord.x)*3);
+    uint g = uint8_buffer((dim.x * coord.y + coord.x)*3 + 1);
+    uint b = uint8_buffer((dim.x * coord.y + coord.x)*3 + 2);
+
+    vec4 rgb = vec4(r / 255.0, g / 255.0, b / 255.0, 1.0);
+    imageStore(outputTex, coord, rgb);
+}

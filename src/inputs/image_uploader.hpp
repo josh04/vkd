@@ -18,7 +18,11 @@ namespace vkd {
             yuv420p,
             half_rgba,
             libraw_short,
-            bayer_short
+            bayer_short,
+            r8,
+            rgb8,
+            r16,
+            rgb16
         };
 
         enum class OutFormat {
@@ -27,6 +31,8 @@ namespace vkd {
         };
 
         void init(int32_t width, int32_t height, InFormat ifmt, OutFormat ofmt, std::string param_hash_name);
+        
+        void commands(CommandBuffer& buf);
         void commands(VkCommandBuffer buf);
         void execute();
 
@@ -64,6 +70,7 @@ namespace vkd {
         }
 
         void * get_main() const { return _staging_buffer->get(); }
+        size_t get_main_size() const { return _staging_buffer->size(); }
         auto get_gpu() const { return _image; }
 
         void allocate(VkCommandBuffer buf);
@@ -86,6 +93,10 @@ namespace vkd {
         std::shared_ptr<Kernel> _half_buffer_to_image = nullptr;
         std::shared_ptr<Kernel> _bayer = nullptr;
         std::shared_ptr<Kernel> _libraw_short = nullptr;
+        std::shared_ptr<Kernel> _r8 = nullptr;
+        std::shared_ptr<Kernel> _r16 = nullptr;
+        std::shared_ptr<Kernel> _rgb8 = nullptr;
+        std::shared_ptr<Kernel> _rgb16 = nullptr;
         
     };
 }

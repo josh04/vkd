@@ -41,7 +41,7 @@ namespace vkd {
         int GetFrameMin() const override { return 0; }
 
         int GetFrameMax() const override { 
-            return frame_max;
+            return static_cast<int>(frame_max); // TODO: DANGER
         }
 
         int GetItemCount() const override { return lines.size(); }
@@ -68,8 +68,26 @@ namespace vkd {
             return "";
         }
 
-        void BeginEdit(int /*index*/) override {}
-        void EndEdit() override { edited = true; }
+        int edit_index = 0;
+        int edit_start = 0;
+        int edit_end = 0;
+
+        void BeginEdit(int index) override {
+            edit_index = index;
+            edit_start = lines[index]->blocks[0].start;
+            edit_end = lines[index]->blocks[0].end;
+        }
+
+        void EndEdit() override { 
+            if (edit_start != lines[edit_index]->blocks[0].start || edit_end != lines[edit_index]->blocks[0].end) {
+                edited = true; 
+            }
+            edit_index = 0;
+            edit_start = 0;
+            edit_end = 0;
+        }
+
+        void DoubleClick(int index) override;
 
         bool edited = false;
 
@@ -83,6 +101,8 @@ namespace vkd {
 
         int64_t frame_max = 100;
 
+        std::function<void(int)> open_editor_callback;
+
         template <class Archive>
         void serialize(Archive & ar, const uint32_t version) {
             if (version == 0) {
@@ -94,6 +114,7 @@ namespace vkd {
     class Timeline {
     public:
         Timeline() : _sequencer(std::make_unique<SequencerImpl>()) {
+            _sequencer->open_editor_callback = std::bind(&Timeline::open_bar_editor, this, std::placeholders::_1);
         }
         ~Timeline() = default;
         Timeline(Timeline&&) = delete;
@@ -109,6 +130,8 @@ namespace vkd {
                 }
             }
         }
+
+        void open_bar_editor(int32_t index) { _open_bar_editors.insert(index); }
 
         void draw(MainUI& ui, bool& graph_changed);
 
@@ -129,5 +152,7 @@ namespace vkd {
         Frame _current_frame = {0};
 
         bool _expanded = true;
+
+        std::set<int32_t> _open_bar_editors;
     };
 }

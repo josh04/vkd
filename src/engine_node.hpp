@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <optional>
 #include <memory>
 #include <set>
 #include <map>
@@ -10,6 +11,9 @@
 #include "engine_node_register.hpp"
 #include "parameter.hpp"
 #include "semaphore.hpp"
+#include "stream.hpp"
+#include "command_buffer.hpp"
+#include "inputs/blockedit.hpp"
 
 #define DECLARE_NODE(INPUTS, OUTPUTS, TAG) \
         static int32_t input_count() { return INPUTS; } \
@@ -24,6 +28,7 @@ namespace vkd {
 
     enum class UINodeState {
         normal,
+        unconfigured,
         error
     };
     
@@ -59,8 +64,6 @@ namespace vkd {
     class ParameterInterface;
     class Kernel;
     
-    using ShaderParamMap = std::map<std::string, std::map<std::string, std::shared_ptr<ParameterInterface>>>;
-
     enum class ExecutionType {
         UI,
         Execution
@@ -94,19 +97,18 @@ namespace vkd {
 
         virtual void inputs(const std::vector<std::shared_ptr<EngineNode>>& in) = 0;
         virtual std::shared_ptr<EngineNode> clone() const = 0;
-        virtual const SemaphorePtr& wait_prerender() const { return nullptr; }
 
         virtual void post_setup() {}
 
         virtual void init() = 0;
-        virtual void post_init() {}
         virtual bool update(ExecutionType type) = 0;
         virtual void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) = 0;
-        virtual void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) = 0;
-        virtual void execute(ExecutionType type, const SemaphorePtr& wait_semaphore) { execute(type, wait_semaphore, nullptr); };
+        virtual void execute(ExecutionType type, Stream& stream) = 0;
         virtual void post_execute(ExecutionType type) {}
         virtual void ui() {};
         virtual void finish() {};
+
+        virtual bool working() const { return false; }
 
         void set_device(std::shared_ptr<Device> device) { _device = device; }
         void set_renderpass(std::shared_ptr<Renderpass> renderpass) { _renderpass = renderpass; }
@@ -137,6 +139,10 @@ namespace vkd {
         }
 
         void fake_node(const std::shared_ptr<FakeNode>& fake_node) { _fake_node = fake_node; }
+        auto fake_node() const { return _fake_node.lock(); }
+
+        void update_params() const; 
+
         void set_state(UINodeState state);
 
         std::string hash() const { return std::to_string(_hash); }
@@ -154,6 +160,8 @@ namespace vkd {
 
         virtual void allocate(VkCommandBuffer buf) {}
         virtual void deallocate() {}
+
+        virtual std::optional<BlockEditParams> block_edit_params() const { return std::nullopt; }
     protected:
         std::shared_ptr<Device> _device = nullptr;
         std::shared_ptr<Renderpass> _renderpass = nullptr;
@@ -161,6 +169,8 @@ namespace vkd {
         ShaderParamMap _params;
 
         std::vector<std::shared_ptr<EngineNode>> _inputs;
+
+        CommandBuffer& command_buffer();
 
     private:
         static std::map<std::string, NodeData> _NodeData;
@@ -176,6 +186,7 @@ namespace vkd {
         const int64_t _hash = _next_hash++;
         static std::atomic_int64_t _next_hash;
 
+        std::optional<CommandBufferPtr> _compute_command_buffer;
     };
 }
 

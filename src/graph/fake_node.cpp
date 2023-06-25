@@ -58,7 +58,7 @@ namespace vkd {
                         }
                     }
 
-                } catch (GraphException& e) {
+                } catch (GraphException&) {
                     failed_any = true;
                     fake_node->set_state(UINodeState::error);
                 }
@@ -81,7 +81,7 @@ namespace vkd {
                         real_node->update_params(fake_node->params());
                     }
                     
-                } catch (GraphException& e) {
+                } catch (GraphException&) {
                     failed_any = true;
                     fake_node->set_state(UINodeState::error);
                 }
@@ -94,7 +94,7 @@ namespace vkd {
             graph->sort();
             graph->init();
 
-        } catch (GraphException& e) {
+        } catch (GraphException&) {
             graph = nullptr;
         }
         

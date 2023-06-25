@@ -12,5 +12,5 @@ layout (location = 0) out vec4 outFragColor;
 
 void main() 
 {
-	outFragColor = linearToSRGB(texture(imageSampler, inTex));
+	outFragColor = texture(imageSampler, inTex);
 }

@@ -68,7 +68,28 @@ namespace vkd {
 
         VK_CHECK_RESULT(vkCreateImage(_device->logical_device(), &image_create_info, nullptr, &_image));
 
-        _sampler = create_sampler(_device->logical_device());
+        _sampler = ScopedSampler::make(_device);
+
+        update_debug_name();
+    }
+
+    void Image::update_debug_name() {
+        if (_image != VK_NULL_HANDLE)
+        {
+            _device->set_debug_utils_object_name(_debug_name + " (image)", VK_OBJECT_TYPE_IMAGE, (uint64_t)_image);
+        }
+        if (_sampler != VK_NULL_HANDLE)
+        {
+            _device->set_debug_utils_object_name(_debug_name + " (sampler)", VK_OBJECT_TYPE_SAMPLER, (uint64_t)_sampler->get());
+        }
+        if (_view != VK_NULL_HANDLE)
+        {
+            _device->set_debug_utils_object_name(_debug_name + " (view)", VK_OBJECT_TYPE_IMAGE_VIEW, (uint64_t)_view);
+        }
+        if (_ui_desc_set != VK_NULL_HANDLE)
+        {
+            _device->set_debug_utils_object_name(_debug_name + " (ui desc set)", VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)_ui_desc_set);
+        }
     }
 
     void Image::allocate(VkMemoryPropertyFlags memory_property_flags) {
@@ -99,9 +120,7 @@ namespace vkd {
     }
 
     void Image::deallocate() {
-        if (_sampler) { 
-            vkDestroySampler(_device->logical_device(), _sampler, nullptr); _sampler = VK_NULL_HANDLE; 
-            }
+        _sampler = nullptr;
         if (_view) { 
             vkDestroyImageView(_device->logical_device(), _view, nullptr); _view = VK_NULL_HANDLE; 
             }
@@ -139,6 +158,7 @@ namespace vkd {
         
         VK_CHECK_RESULT(vkCreateImageView(_device->logical_device(), &image_view_create_info, nullptr, &_view));
         _allocated = true; // TODO remove once everything is onboard with nu-alloc
+        update_debug_name();
     }
 
     void Image::copy(Image& src, VkCommandBuffer buf) {

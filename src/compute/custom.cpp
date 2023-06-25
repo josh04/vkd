@@ -44,7 +44,7 @@ void main()
         auto shader = std::make_unique<ManualComputeShader>(_device);
         shader->create(kernel_text, "main");
 
-        _custom = Kernel::make(*this, std::move(shader), "CUSTOM_SHADER", {16, 16, 1});
+        _custom = Kernel::make(*this, std::move(shader), "CUSTOM_SHADER", Kernel::default_local_sizes);
 
         _custom->set_arg(0, inp);
         _custom->set_arg(1, outp);
@@ -52,7 +52,7 @@ void main()
     }
 
     void Custom::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
@@ -64,7 +64,6 @@ void main()
     return vec4(luma, luma, luma, 1.0);
 })src");
         
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -80,9 +79,6 @@ void main()
 
     void Custom::deallocate() { 
         _image->deallocate();
-    }
-
-    void Custom::post_init() {
     }
 
     bool Custom::update(ExecutionType type) {
@@ -107,10 +103,10 @@ void main()
         return update;
     }
 
-    void Custom::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _custom->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Custom::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _custom->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
+        stream.submit(command_buffer());
     }
 }

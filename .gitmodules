@@ -40,3 +40,6 @@
 [submodule "stb"]
 	path = external/stb
 	url = https://github.com/nothings/stb
+[submodule "external/libjpeg-turbo"]
+	path = external/libjpeg-turbo
+	url = https://github.com/libjpeg-turbo/libjpeg-turbo

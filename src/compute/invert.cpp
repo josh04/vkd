@@ -82,13 +82,13 @@ namespace vkd {
     }
 
     void Invert::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
-        _invert = Kernel::make(*this, "shaders/compute/invert.comp.spv", "main", {16, 16, 1});
-        _avg = Kernel::make(*this, "shaders/compute/averages.comp.spv", "main", {16, 16, 1});
-        _avg_clone = Kernel::make(*this, "shaders/compute/averages_clone_channel.comp.spv", "main", {16, 16, 1});
+        _invert = Kernel::make(*this, "shaders/compute/invert.comp.spv", "main", Kernel::default_local_sizes);
+        _avg = Kernel::make(*this, "shaders/compute/averages.comp.spv", "main", Kernel::default_local_sizes);
+        _avg_clone = Kernel::make(*this, "shaders/compute/averages_clone_channel.comp.spv", "main", Kernel::default_local_sizes);
 
         _run_averages = make_param<ParameterType::p_bool>(*this, "run averages", 0, {"button"});
         
@@ -109,9 +109,11 @@ namespace vkd {
             set_scale_param(*_invert, param);
         }
 
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
+        if (!image) {
+            throw GraphException("No image received at Invert node");
+        }
         _size = image->dim();
 
         _image = vkd::Image::float_image(_device, _size);
@@ -136,10 +138,6 @@ namespace vkd {
         _image->deallocate();
         _avg_temp_image_a->deallocate();
         _avg_temp_image_b->deallocate();
-    }
-
-    void Invert::post_init()
-    {
     }
 
     bool Invert::update(ExecutionType type) {
@@ -216,7 +214,7 @@ namespace vkd {
             _min[i] = dl2.z;
             _mean[i] = dl2.w / (double)(size_margins.x * size_margins.y);
 
-            //std::cout << i << " hmean: " << dl2.x << " max: " << dl2.y << " min: " << dl2.z << " avg: " << dl2.w / (double)(_size.x * _size.y) << std::endl;
+            //console << i << " hmean: " << dl2.x << " max: " << dl2.y << " min: " << dl2.z << " avg: " << dl2.w / (double)(_size.x * _size.y) << std::endl;
         }
 
         _hmean_param->as<glm::vec4>().set_force(_hmean);
@@ -243,16 +241,14 @@ namespace vkd {
 
     }
 
-    void Invert::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _invert->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
+    void Invert::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _invert->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
 
         _fence->submit();
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
-    }
-
-    void Invert::post_execute(ExecutionType type) {
+        stream.submit(command_buffer());
+        
         _fence->wait();
         _fence->reset();
 
@@ -260,5 +256,8 @@ namespace vkd {
             _calculate_averages();
             _run_calculate_averages = false;
         }
+    }
+
+    void Invert::post_execute(ExecutionType type) {
     }
 }

@@ -18,6 +18,7 @@ namespace vkd {
 
         void kernel_init() override;
         void kernel_params() override;
+        void kernel_update() override {}
 
     private:
 
@@ -35,6 +36,7 @@ namespace vkd {
 
         void kernel_init() override;
         void kernel_params() override;
+        void kernel_update() override {}
 
     private:
 

@@ -26,23 +26,30 @@ namespace vkd {
         }
 
         std::string render_button = "render";
-        if (_running_render) { render_button = "render in progress"; }
-        if (ImGui::Button(render_button.c_str()) && !_running_render) {
-            _timeline.scrub(_range.x);
-            _running_render_current = _range.x;
-            _running_render_target = _range.y;
-            _running_render = true;
-            execute_graph = true;
+        if (_running_render) { 
+            ImGui::Text("render at: %d target: %d", _running_render_current, _running_render_target);
+            render_button = "render in progress"; 
+        }
+        if (ImGui::Button(render_button.c_str())) {
+            if (_running_render) {
+                _running_render_current = _running_render_target;
+            } else {
+                _timeline.scrub(_range.x);
+                _running_render_current = _range.x;
+                _running_render_target = _range.y;
+                _running_render = true;
+                execute_graph = true;
+            }
         }
 
         ImGui::End();
 
     }
 
-    void RenderWindow::execute(Graph& graph) {
+    void RenderWindow::execute(Graph& graph, const StreamPtr& stream) {
 
         if (_running_render) {
-            _execute(graph);
+            _execute(graph, stream);
         }
 
     }
@@ -74,18 +81,19 @@ namespace vkd {
         outp->set_range(range);
 
         outp->set_param("path", std::string(_path));
+        outp->set_param("path", std::string(_path));
 
         graph_builder.add(merge);
         //graph_builder.add(download);
         graph_builder.add(outp);
     }
 
-    void RenderWindow::_execute(Graph& graph) {
+    void RenderWindow::_execute(Graph& graph, const StreamPtr& stream) {
         _timeline.increment();
         graph.set_frame(_timeline.current_frame());
         auto before = std::chrono::high_resolution_clock::now();
-        graph.update(ExecutionType::Execution);
-        graph.execute(ExecutionType::Execution);
+        graph.update(ExecutionType::Execution, stream);
+        graph.execute(ExecutionType::Execution, stream, {});
         auto after = std::chrono::high_resolution_clock::now();
 
         auto diff = std::chrono::duration_cast<std::chrono::microseconds>(after - before).count();
@@ -96,9 +104,9 @@ namespace vkd {
         std::string extra = "Frame " + std::to_string(_timeline.current_frame().index);
         _performance.add(report, diff, extra);
 
-        if (_running_render_target == _running_render_current) {
+        if (_running_render_target - 1 <= _running_render_current) {
             auto before = std::chrono::high_resolution_clock::now();
-            graph.finish();
+            graph.finish(*stream);
             auto after = std::chrono::high_resolution_clock::now();
 
 

@@ -1,6 +1,7 @@
 set(TEST_SOURCE
     load_save.cpp
     test_ocio.cpp
+    test_console.cpp
 )
 
 add_executable(vkd-test ${TEST_SOURCE})

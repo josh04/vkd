@@ -4,12 +4,12 @@
 #include <vector>
 
 #include "vulkan.hpp"
-#include "vulkan.hpp"
+#include "sampler.hpp"
+#include "image_types.hpp"
+#include "buffer_types.hpp"
 
 namespace vkd {
     class Device;
-    class Buffer;
-    class Image;
     class DescriptorLayout;
     class DescriptorPool;
 
@@ -21,14 +21,19 @@ namespace vkd {
 		DescriptorSet(const DescriptorSet&) = delete;
 
 		void create();
-		void add_buffer(Buffer& buffer);
-		void add_buffer(Buffer& buffer, uint32_t offset, uint32_t range);
-		void add_image(Image& image, VkSampler sampler);
+		void add_buffer(BufferPtr buffer);
+		void add_buffer(BufferPtr buffer, uint32_t offset, uint32_t range);
+    	void add_image(ImagePtr image, const ScopedSamplerPtr& sampler);
+		void add_image(ImagePtr image, VkSampler sampler);
         void update();
+		void flush();
 
 		auto get() const { return _desc_set; }
 
-	private:
+        void debug_name(const std::string& debugName) { _debug_name = debugName; update_debug_name(); }
+    protected:
+        void update_debug_name();
+        std::string _debug_name = "Anonymous Desc Set";
 	
 		std::shared_ptr<Device> _device = nullptr;
 		std::shared_ptr<DescriptorLayout> _layout = nullptr;
@@ -40,6 +45,9 @@ namespace vkd {
 		};
 		std::vector<Binding> _bindings;
 
-		VkDescriptorSet _desc_set;
+		VkDescriptorSet _desc_set = VK_NULL_HANDLE;
+
+		std::vector<BufferPtr> _buffer_storage;
+		std::vector<ImagePtr> _image_storage;
 	};
 }

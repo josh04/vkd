@@ -13,15 +13,14 @@ namespace vkd {
     REGISTER_NODE("median", "median", Median);
 
     void Median::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
         _median = std::make_shared<Kernel>(_device, param_hash_name());
-        _median->init("shaders/compute/median.comp.spv", "main", {16, 16, 1});
+        _median->init("shaders/compute/median.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_median);
         
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -38,13 +37,9 @@ namespace vkd {
         _median->set_arg(0, image);
         _median->set_arg(1, _image);
         
-        begin_command_buffer(_compute_command_buffer);
-        _median->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
-    }
-
-    void Median::post_init()
-    {
+        command_buffer().begin();
+        _median->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
     }
 
     bool Median::update(ExecutionType type) {
@@ -59,15 +54,15 @@ namespace vkd {
         }
 
         if (update) {
-            begin_command_buffer(_compute_command_buffer);
-            _median->dispatch(_compute_command_buffer, _size.x, _size.y);
-            end_command_buffer(_compute_command_buffer);
+            command_buffer().begin();
+            _median->dispatch(command_buffer(), _size.x, _size.y);
+            command_buffer().end();
         }
 
         return update;
     }
 
-    void Median::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Median::execute(ExecutionType type, Stream& stream) {
+        stream.submit(command_buffer());
     }
 }

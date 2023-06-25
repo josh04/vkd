@@ -13,9 +13,11 @@ namespace vkd {
 
     void SingleKernel::init() {
         _command_buffer = CommandBuffer::make(_device);
-        _compute_complete = Semaphore::make(_device);
         
         _input_image = _image_node->get_output_image();
+        if (!_input_image) {
+            throw GraphException("Input image was null in SingleKernel node");
+        }
 
         kernel_init();
         
@@ -33,11 +35,8 @@ namespace vkd {
         _output_image->deallocate();
     }
 
-    void SingleKernel::post_init()
-    {
-    }
-
     bool SingleKernel::update(ExecutionType type) {
+        kernel_pre_update(type);
         bool update = false;
 
         for (auto&& pmap : _params) {
@@ -52,15 +51,19 @@ namespace vkd {
             _first_run = false;
         }
 
+        if (update) {
+            kernel_update();
+        }
+
         return update;
     }
 
-    void SingleKernel::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void SingleKernel::execute(ExecutionType type, Stream& stream) {
         {
             auto scope = _command_buffer->record();
             auto sz = kernel_dim();
             _kernel->dispatch(*_command_buffer, sz.x, sz.y);
         }
-        _command_buffer->submit(wait_semaphore, _compute_complete, fence);
+        stream.submit(_command_buffer);
     }
 }

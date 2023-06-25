@@ -26,10 +26,10 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<Particles>(); }
 
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
         struct Particle {
             glm::vec2 pos;								// Particle position
@@ -38,8 +38,7 @@ namespace vkd {
         };
 
         Buffer& storage_buffer() { return *_compute_storage_buffer; }
-        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
-        auto compute_complete() const { return _compute_complete; }
+        
     private:
     #define PARTICLE_COUNT 256 * 128
         std::shared_ptr<ComputePipeline> _compute_pipeline = nullptr;
@@ -61,10 +60,9 @@ namespace vkd {
         // SSBO particle declaration
         
 
-        VkCommandBuffer _compute_command_buffer;
+        
 
         uint8_t * _mapped_uniform_buffer = nullptr;
 
-        SemaphorePtr _compute_complete;
     };
 }

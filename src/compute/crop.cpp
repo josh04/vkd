@@ -13,13 +13,12 @@ namespace vkd {
     REGISTER_NODE("crop", "crop", Crop);
 
     void Crop::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
-        _crop = Kernel::make(*this, "shaders/compute/crop.comp.spv", "main", {16, 16, 1});
+        _crop = Kernel::make(*this, "shaders/compute/crop.comp.spv", "main", Kernel::default_local_sizes);
         
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -46,9 +45,6 @@ namespace vkd {
         _image->deallocate();
     }
 
-    void Crop::post_init() {
-    }
-
     bool Crop::update(ExecutionType type) {
         bool update = false;
 
@@ -69,16 +65,16 @@ namespace vkd {
         return update;
     }
 
-    void Crop::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void Crop::execute(ExecutionType type, Stream& stream) {
 
         auto crop = _crop_margin->as<glm::ivec4>().get();
 
         if (crop.z - crop.x > 0 && crop.w - crop.y > 0) {
 
-            begin_command_buffer(_compute_command_buffer);
-            _crop->dispatch(_compute_command_buffer, crop.z - crop.x, crop.w - crop.y);
-            end_command_buffer(_compute_command_buffer);
-            submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+            command_buffer().begin();
+            _crop->dispatch(command_buffer(), crop.z - crop.x, crop.w - crop.y);
+            command_buffer().end();
+            stream.submit(command_buffer());
 
         }
     }

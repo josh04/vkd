@@ -4,6 +4,7 @@
 #include "vulkan.hpp"
 
 #include "engine_node.hpp"
+#include "sampler.hpp"
 
 namespace vkd {
     
@@ -34,10 +35,10 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<DrawParticles>(); }
 
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override;
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
     private:
         std::shared_ptr<DescriptorPool> _desc_pool = nullptr;
@@ -49,7 +50,7 @@ namespace vkd {
 
         std::shared_ptr<Image> _particle_image_1 = nullptr;
         std::shared_ptr<Image> _particle_image_2 = nullptr;
-        VkSampler _particle_sampler;
+        ScopedSamplerPtr _particle_sampler;
 
         std::shared_ptr<Particles> _compute_particles = nullptr;
     };

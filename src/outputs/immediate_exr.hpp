@@ -15,5 +15,5 @@ namespace vkd {
         PNG,
         JPG
     };
-    std::string immediate_exr(const std::shared_ptr<Device>& device, std::string filename, ImmediateFormat format, const std::shared_ptr<Image>& image, std::unique_ptr<enki::TaskSet>& task);
+    std::string immediate_exr(const std::shared_ptr<Device>& device, std::string filename, ImmediateFormat format, const std::shared_ptr<Image>& image, enki::TaskSet *& task);
 }

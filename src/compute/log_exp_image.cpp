@@ -14,7 +14,7 @@ namespace vkd {
 
     void Exp::kernel_init() {
         _kernel = std::make_shared<Kernel>(_device, param_hash_name());
-        _kernel->init("shaders/compute/exp_image.comp.spv", "main", {16, 16, 1});
+        _kernel->init("shaders/compute/exp_image.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_kernel);
     }
 
@@ -27,7 +27,7 @@ namespace vkd {
 
     void Log::kernel_init() {
         _kernel = std::make_shared<Kernel>(_device, param_hash_name());
-        _kernel->init("shaders/compute/log_image.comp.spv", "main", {16, 16, 1});
+        _kernel->init("shaders/compute/log_image.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_kernel);
     }
 

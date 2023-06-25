@@ -11,6 +11,7 @@ namespace vkd {
 	class Renderpass; 
 	class Shader;
 	class VertexInput;
+	class DescriptorSet;
     struct Vertex {
         float position[3];
         float color[3];
@@ -19,7 +20,7 @@ namespace vkd {
 	class PipelineLayout {
 	public:
 		PipelineLayout(std::shared_ptr<Device> device) : _device(device) {}
-		virtual ~PipelineLayout() = default;
+		virtual ~PipelineLayout();
 		PipelineLayout(PipelineLayout&&) = delete;
 		PipelineLayout(const PipelineLayout&) = delete;
 
@@ -33,7 +34,7 @@ namespace vkd {
 		void add_constant(VkShaderStageFlags stage_flags, size_t offset, size_t size);
 	protected:
 		std::shared_ptr<Device> _device = nullptr;
-		VkPipelineLayout _layout;
+		VkPipelineLayout _layout = VK_NULL_HANDLE;
 
 		std::vector<VkPushConstantRange> _push_constant_ranges;
 	};
@@ -41,7 +42,7 @@ namespace vkd {
 	class PipelineCache {
 	public:
 		PipelineCache(std::shared_ptr<Device> device) : _device(device) {}
-		~PipelineCache() = default;
+		~PipelineCache();
 		PipelineCache(PipelineCache&&) = delete;
 		PipelineCache(const PipelineCache&) = delete;
 
@@ -50,7 +51,7 @@ namespace vkd {
 		auto get() const { return _cache; }
 	private:
 		std::shared_ptr<Device> _device = nullptr;
-		VkPipelineCache _cache;
+		VkPipelineCache _cache = VK_NULL_HANDLE;
 	};
 
 	class Pipeline {
@@ -58,11 +59,11 @@ namespace vkd {
 		Pipeline(std::shared_ptr<Device> device, 
 				 std::shared_ptr<PipelineCache> pipeline_cache) 
 				 : _device(device), _cache(pipeline_cache) { _layout = std::make_shared<PipelineLayout>(device); }
-		virtual ~Pipeline() = default;
+		virtual ~Pipeline();
 		Pipeline(Pipeline&&) = delete;
 		Pipeline(const Pipeline&) = delete;
 
-		virtual void bind(VkCommandBuffer buf, VkDescriptorSet desc_set) const;
+		virtual void bind(VkCommandBuffer buf, const std::shared_ptr<DescriptorSet>& desc_set);
 		auto get() const { return _pipeline; }
 		auto cache() const { return _cache; }
 		auto layout() const { return _layout; }
@@ -73,12 +74,14 @@ namespace vkd {
 		std::shared_ptr<Device> _device = nullptr;
 		std::shared_ptr<PipelineCache> _cache = nullptr;
 		std::shared_ptr<PipelineLayout> _layout = nullptr;
-		VkPipeline _pipeline;
+		VkPipeline _pipeline = VK_NULL_HANDLE;
 
 		VkPipelineCreateFlags _pipeline_create_flags = 0;
 		VkPipelineBindPoint _bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		VkPrimitiveTopology _topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		bool _depth_test = VK_TRUE;
+
+		std::shared_ptr<DescriptorSet> _desc_set = nullptr;
 	};
 
 	class GraphicsPipeline : public Pipeline {

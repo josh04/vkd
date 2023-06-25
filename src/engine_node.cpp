@@ -19,7 +19,7 @@ namespace vkd {
     }
 
     void EngineNode::register_node_type(std::string name, std::string display_name, int32_t inputs, int32_t outputs, std::shared_ptr<EngineNode> clone) {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::scoped_lock lock(_mutex);
         _NodeData.emplace(name, NodeData{name, display_name, clone, inputs, outputs});
     }
 
@@ -53,5 +53,20 @@ namespace vkd {
         if (ptr) {
             ptr->set_state(state);
         }
+    }
+
+    void EngineNode::update_params() const {
+        auto fake = fake_node();
+        fake->set_params(params());
+    }
+
+    CommandBuffer& EngineNode::command_buffer() {
+        if (_compute_command_buffer.has_value()) {
+            return *_compute_command_buffer.value();
+        }
+
+        _compute_command_buffer = CommandBuffer::make(_device);
+        _compute_command_buffer.value()->debug_name(param_hash_name() + " (command buffer)");
+        return *_compute_command_buffer.value();
     }
 }

@@ -4,6 +4,16 @@
 #include <algorithm>
 
 namespace vkd {
+
+    Instance::~Instance()
+    {
+        if (ext_vkDestroyDebugUtilsMessengerEXT != nullptr && _debug_reporter) {
+            ext_vkDestroyDebugUtilsMessengerEXT(_instance, _debug_reporter, nullptr);
+        }
+
+        vkDestroyInstance(_instance, nullptr);
+    }
+
     void Instance::init(bool validation) {
         _validation = validation;
 
@@ -63,7 +73,7 @@ namespace vkd {
                 // Output message if requested extension is not available
                 if (std::find(_supported_instance_extensions.begin(), _supported_instance_extensions.end(), enabledExtension) == _supported_instance_extensions.end())
                 {
-                    std::cerr << "Enabled instance extension \"" << enabledExtension << "\" is not present at instance level" << std::endl;
+                    console << "Enabled instance extension \"" << enabledExtension << "\" is not present at instance level" << std::endl;
                 }
                 instanceExtensions.push_back(enabledExtension.c_str());
             }
@@ -107,7 +117,7 @@ namespace vkd {
                 instanceCreateInfo.ppEnabledLayerNames = arr.data();
                 instanceCreateInfo.enabledLayerCount = 1;
             } else {
-                std::cerr << "Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled" << std::endl;;
+                console << "Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled" << std::endl;;
                 _validation = false;
             }
         }
@@ -145,5 +155,44 @@ namespace vkd {
 	        vkGetPhysicalDeviceMemoryProperties(device, &_physical_device_mem_props[i]);
             i++;
         }
+
+        if (_validation) {
+            VkDebugUtilsMessengerCreateInfoEXT debug_messenger_info{};
+            debug_messenger_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+            debug_messenger_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+            debug_messenger_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+            debug_messenger_info.pfnUserCallback = &Instance::debug_report;
+            debug_messenger_info.pUserData = nullptr; // Optional
+
+            ext_vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(_instance, "vkCreateDebugUtilsMessengerEXT");
+            ext_vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(_instance, "vkSetDebugUtilsObjectNameEXT");
+            ext_vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
+            if (ext_vkCreateDebugUtilsMessengerEXT != nullptr) {
+                VkResult ret = ext_vkCreateDebugUtilsMessengerEXT(_instance, &debug_messenger_info, nullptr, &_debug_reporter);
+                if (ret) {
+                    throw std::runtime_error(std::string("Failed to enable debug layer handler\n"));
+                }
+            } else {
+                console << "Failed to enable custom debug layer reporter with vkCreateDebugUtilsMessengerEXT\n";
+            }
+        }
+    }
+    
+    VkResult Instance::set_debug_utils_object_name_with_device(VkDevice device, const VkDebugUtilsObjectNameInfoEXT * pNameInfo) const { 
+        if (ext_vkSetDebugUtilsObjectNameEXT) {
+            return ext_vkSetDebugUtilsObjectNameEXT(device, pNameInfo); 
+        } else { 
+            return VK_SUCCESS; 
+        } 
+    }
+    
+    VKAPI_ATTR VkBool32 VKAPI_CALL Instance::debug_report(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+        void* pUserData) {
+        
+        console << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+        return VK_FALSE;
     }
 }

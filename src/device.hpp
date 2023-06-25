@@ -19,6 +19,7 @@ namespace vkd {
         ~Device();
         Device(Device&&) = delete;
         Device(const Device&) = delete;
+        Device& operator=(const Device&) = delete;
 
         void create(VkPhysicalDevice physical_device);
         VkCommandPool create_command_pool(uint32_t queue_index);
@@ -46,15 +47,17 @@ namespace vkd {
         auto& host_cache() { return *_host_cache; }
         auto& memory_manager() { return *_memory_manager; }
         auto& pool() { return *_memory_pool; }
+
+        void set_debug_utils_object_name(const std::string& name, VkObjectType type, uint64_t object);
     private:
         void populate_physical_device_props(VkPhysicalDevice device);
-        std::shared_ptr<Instance> _instance;
-        VkPhysicalDevice _physical_device;
-        VkDevice _logical_device;
+        std::shared_ptr<Instance> _instance = nullptr;
+        VkPhysicalDevice _physical_device = VK_NULL_HANDLE;
+        VkDevice _logical_device = VK_NULL_HANDLE;
         static constexpr uint32_t _queue_index = 0;
         std::mutex _queue_mutex;
-        VkQueue _queue;
-        VkCommandPool _command_pool;
+        VkQueue _queue = VK_NULL_HANDLE;
+        VkCommandPool _command_pool = VK_NULL_HANDLE;
 
         std::vector<VkQueueFamilyProperties> _logicalDeviceQueueFamilyProps;
         std::vector<VkExtensionProperties> _device_extension_props;
@@ -66,10 +69,10 @@ namespace vkd {
         VkPhysicalDevice8BitStorageFeaturesKHR _8bit_features;
         VkPhysicalDevice16BitStorageFeatures _16bit_features;
 
-        PFN_vkGetPhysicalDeviceFeatures2KHR ext_vkGetPhysicalDeviceFeatures2KHR;
+        PFN_vkGetPhysicalDeviceFeatures2KHR ext_vkGetPhysicalDeviceFeatures2KHR = nullptr;
 
-        std::unique_ptr<HostCache> _host_cache;
-        std::unique_ptr<MemoryManager> _memory_manager;
-        std::unique_ptr<MemoryPool> _memory_pool;
+        std::unique_ptr<HostCache> _host_cache; // these three are not default initialised to nullptr to avoid
+        std::unique_ptr<MemoryManager> _memory_manager; // compile issue on
+        std::unique_ptr<MemoryPool> _memory_pool; // clang
     };
 }

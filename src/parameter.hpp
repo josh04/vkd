@@ -92,6 +92,9 @@ namespace vkd {
     template<typename P>
     class Parameter;
 
+    class ParameterInterface;
+    using ParamPtr = std::shared_ptr<ParameterInterface>;
+
     class ParameterInterface : public std::enable_shared_from_this<ParameterInterface> {
     public:
         virtual ~ParameterInterface() {}
@@ -126,13 +129,17 @@ namespace vkd {
         virtual void enum_names(std::vector<std::string> names) = 0;
         virtual const std::vector<std::string>& enum_names() const = 0;
 
+        virtual void enum_values(std::vector<int> values) = 0;
+        virtual const std::vector<int32_t>& enum_values() const = 0;
+        
         auto&& ui_changed_last_tick() { return _ui_changed_last_tick; }
 
         template <class Archive>
         void serialize(Archive& ar, const uint32_t version)
         {
             if (version >= 0) {
-                ar(_changed);
+                bool changed = false;
+                ar(changed);
             }
             if (version >= 1) {
                 ar(_order);
@@ -142,7 +149,7 @@ namespace vkd {
             }
         }
     protected:
-        bool _changed = true;
+        //bool _changed = true;
         int64_t _version_index = 0;
         int64_t _execution_index = 0;
 
@@ -295,6 +302,9 @@ namespace vkd {
 
         void enum_names(std::vector<std::string> names) override { if constexpr (std::is_same<P, int>::value || std::is_same<P, unsigned int>::value) { _enum_names = std::move(names); } }
         const std::vector<std::string>& enum_names() const override { return _enum_names; }
+
+        void enum_values(std::vector<int32_t> values) override { if constexpr (std::is_same<P, int>::value || std::is_same<P, unsigned int>::value) { _enum_values = std::move(values); } }
+        const std::vector<int32_t>& enum_values() const override { return _enum_values; }
         
         template <class Archive>
         void serialize(Archive& ar, const uint32_t version)
@@ -304,6 +314,9 @@ namespace vkd {
             }
             if (version >= 1) {
                 ar(_enum_names);
+            }
+            if (version >= 2) {
+                ar(_enum_values);
             }
         }
     private:
@@ -318,6 +331,7 @@ namespace vkd {
         std::set<std::string> _tags;
 
         std::vector<std::string> _enum_names;
+        std::vector<int32_t> _enum_values;
 
         std::atomic_bool _set_default = false;
     };

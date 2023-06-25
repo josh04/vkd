@@ -75,7 +75,7 @@ namespace vkd {
         _desc_set_layout->create();
         
         _desc_set = std::make_shared<DescriptorSet>(_device, _desc_set_layout, _desc_pool);
-        _desc_set->add_buffer(*_uniform_buffer);
+        _desc_set->add_buffer(_uniform_buffer);
         _desc_set->create();
         
         _pipeline = std::make_shared<GraphicsPipeline>(_device, _pipeline_cache, _renderpass);
@@ -91,13 +91,9 @@ namespace vkd {
         _pipeline->create(_desc_set_layout->get(), std::move(shader_stages), std::move(vertex_input));
     }
 
-    void DrawTriangle::post_init()
-    {
-    }
-
     void DrawTriangle::commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {
         viewport_and_scissor(buf, width, height, width, height);
-        _pipeline->bind(buf, _desc_set->get());
+        _pipeline->bind(buf, _desc_set);
 
         // Bind triangle vertex buffer (contains position and colors)
         std::array<VkDeviceSize, 1> offsets = { 0 };
@@ -111,7 +107,7 @@ namespace vkd {
         vkCmdDrawIndexed(buf, _index_buffer->requested_size() / sizeof(uint32_t), 1, 0, 0, 1);
     }
 
-    void DrawTriangle::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void DrawTriangle::execute(ExecutionType type, Stream& stream) {
 
     }
 }

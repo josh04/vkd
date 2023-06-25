@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
+#include "console.hpp"
 #include "vulkan_enum.hpp"
 #include "graph_exception.hpp"
 #include <SDL2/SDL.h>
@@ -16,7 +17,7 @@
 	{																									\
 		std::stringstream strm; \
 		strm << "Error: VkResult is \"" << vkd::error_string(_RES_) << " (" << _RES_ << ")" << "\" in " << __FILE__ << " at line " << __LINE__; \
-		std::cout << strm.str() << std::endl; \
+		console << strm.str() << std::endl; \
 		throw VkException(strm.str()); \
 	}																									\
 }
@@ -27,7 +28,7 @@
 	{																									\
 		std::stringstream strm; \
 		strm << "Error: VkResult is \"" << vkd::error_string(_RES_) << " (" << _RES_ << ")" << "\" in " << __FILE__ << " at line " << __LINE__; \
-		std::cout << strm.str() << std::endl; \
+		console << strm.str() << std::endl; \
 		assert(_RES_ == VK_SUCCESS); \
 	}																									\
 }
@@ -38,7 +39,7 @@
 	{																									\
 		std::stringstream strm; \
 		strm << "Error: VkResult is \"" << vkd::error_string(_RES_) << " (" << _RES_ << ")" << "\" in " << __FILE__ << " at line " << __LINE__; \
-		std::cout << strm.str() << std::endl; \
+		console << strm.str() << std::endl; \
 		throw VkException(strm.str()); \
 	}																									\
 }
@@ -55,6 +56,7 @@ namespace vkd {
 	class EngineNode;
 	class Fence;
 	class Instance;
+	class HostScheduler;
 	VKDEXPORT std::shared_ptr<Instance> createInstance(bool);
 	VKDEXPORT void shutdown();
     void engine_node_init(const std::shared_ptr<EngineNode>& node, const std::string& param_hash_name);
@@ -63,9 +65,8 @@ namespace vkd {
 	VKDEXPORT void draw();
     //void submit_buffer(VkQueue queue, VkCommandBuffer buf, Fence * fence);
 
-    enki::TaskScheduler& ts();
+    HostScheduler& ts();
 
-	void synchronise_to_host_thread();
     void build_command_buffers();
 
 	Device& device();

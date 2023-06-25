@@ -3,6 +3,7 @@ set(LIBVKD_SOURCE
     buffer.cpp
     command_buffer.cpp
     compute_pipeline.cpp
+    console.cpp
     descriptor_layout.cpp
     descriptor_pool.cpp
     descriptor_set.cpp
@@ -10,6 +11,7 @@ set(LIBVKD_SOURCE
     device.cpp
     engine_node.cpp
     fence.cpp
+    ffmpeg_init.cpp
     framebuffer.cpp
     gl3w.c
     glerror.c
@@ -36,15 +38,6 @@ set(LIBVKD_SOURCE
     render/draw_particles.cpp
     render/draw_triangle.cpp
     render/draw_ui.cpp
-    ui/bin.cpp
-    ui/node_window.cpp
-    ui/timeline.cpp
-    ui/performance.cpp
-    ui/preferences.cpp
-    ui/main_ui.cpp
-    ui/memory_window.cpp
-    ui/render_window.cpp
-    ui/inspector.cpp
 )
 
 set(VKD_SOURCE
@@ -62,6 +55,8 @@ add_subdirectory(inputs ${CMAKE_CURRENT_BINARY_DIR}/inputs)
 add_subdirectory(memory ${CMAKE_CURRENT_BINARY_DIR}/memory)
 add_subdirectory(ocio ${CMAKE_CURRENT_BINARY_DIR}/ocio)
 add_subdirectory(outputs ${CMAKE_CURRENT_BINARY_DIR}/outputs)
+add_subdirectory(services ${CMAKE_CURRENT_BINARY_DIR}/services)
+add_subdirectory(ui ${CMAKE_CURRENT_BINARY_DIR}/ui)
 
 target_compile_definitions(vkd PRIVATE LIBVKD_EXPORTS)
 
@@ -70,13 +65,13 @@ add_dependencies(vkd spirv-shaders copy_tex)
 
 if (WIN32)
     if (DEBUG)
-        install(FILES ${CMAKE_SOURCE_DIR}/LibRaw/raw_d.dll DESTINATION bin)
+        install(FILES ${CMAKE_SOURCE_DIR}/LibRaw/raw_r_d.dll DESTINATION bin)
     else()
-        install(FILES ${CMAKE_SOURCE_DIR}/LibRaw/raw.dll DESTINATION bin)
+        install(FILES ${CMAKE_SOURCE_DIR}/LibRaw/raw_r.dll DESTINATION bin)
     endif()
 endif()
 
-target_link_libraries(vkd PUBLIC SPIRV glslang OpenColorIO::OpenColorIO tinyxml2 spirv-reflect-static imgui sdl2 cereal::cereal ghc_filesystem platform_folders ${CMAKE_DL_LIBS} ktx glm::glm Vulkan::Vulkan enkiTS Imath::Imath OpenEXR::OpenEXRCore OpenEXR::OpenEXR libraw::libraw png)
+target_link_libraries(vkd PUBLIC SPIRV glslang OpenColorIO::OpenColorIO tinyxml2 spirv-reflect-static imgui sdl2 cereal::cereal ghc_filesystem platform_folders ${CMAKE_DL_LIBS} ktx glm::glm Vulkan::Vulkan enkiTS Imath::Imath OpenEXR::OpenEXRCore OpenEXR::OpenEXR libraw::libraw_r png)
 target_link_libraries(vkd PUBLIC FFMPEG::avcodec FFMPEG::avformat FFMPEG::avutil FFMPEG::swscale)
 
 target_include_directories(vkd PRIVATE ../cmake/libpng)

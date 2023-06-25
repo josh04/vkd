@@ -23,14 +23,14 @@ namespace vkd {
         void attach_renderer(GraphBuilder& graph_builder, const std::vector<FakeNodePtr>& terms);
 
         void draw(bool& execute_graph);
-        void execute(Graph& graph);
+        void execute(Graph& graph, const StreamPtr& stream);
 
         void open(bool set) { _open = set; }
         bool open() const { return _open; }
         bool rendering() const { return _running_render; }
 
     private:
-        void _execute(Graph& graph);
+        void _execute(Graph& graph, const StreamPtr& stream);
         Timeline& _timeline;
         Performance& _performance;
 

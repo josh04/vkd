@@ -6,14 +6,14 @@
 #include "ImfRgbaFile.h"
 
 #include "png.h"
-#include "TaskScheduler.h"
+#include "host_scheduler.hpp"
 
 #include "ghc/filesystem.hpp"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 namespace vkd {
-    std::string immediate_exr(const std::shared_ptr<Device>& device, std::string filename, ImmediateFormat format, const std::shared_ptr<Image>& image, std::unique_ptr<enki::TaskSet>& task) {
+    std::string immediate_exr(const std::shared_ptr<Device>& device, std::string filename, ImmediateFormat format, const std::shared_ptr<Image>& image, enki::TaskSet *& task) {
         auto downloader = std::make_shared<ImageDownloader>(device);
         std::string ext;
         if (format == ImmediateFormat::EXR) {
@@ -26,7 +26,9 @@ namespace vkd {
             downloader->init(image, ImageDownloader::OutFormat::uint8_rgbx, "immediate_jpg");
             ext = "jpg";
         }
+        
         downloader->execute();
+        
 
         Fence::auto_wait(device);
 
@@ -43,7 +45,7 @@ namespace vkd {
             i++;
         }
         
-        task = std::make_unique<enki::TaskSet>(1, [test_path, downloader, sz, format](enki::TaskSetPartition range, uint32_t threadnum) mutable {
+        auto utask = std::make_unique<enki::TaskSet>(1, [test_path, downloader, sz, format](enki::TaskSetPartition range, uint32_t threadnum) mutable {
 
             uint8_t * buffer = (uint8_t *)downloader->get_main();
             try {
@@ -89,7 +91,9 @@ namespace vkd {
             }
         });
 
-        ts().AddTaskSetToPipe(task.get());
+        task = utask.get();
+
+        ts().add(std::move(utask));
         
         return test_path.string();
     }

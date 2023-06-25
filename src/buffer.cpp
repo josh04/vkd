@@ -21,6 +21,7 @@ namespace vkd {
     }
 
     void Buffer::allocate() {
+    if (_allocated) { return; }
         _create(_requested_size, _buffer_usage_flags, _memory_flags);
         _allocated = true;
     }
@@ -47,8 +48,13 @@ namespace vkd {
         buffer_memory_barrier.size = VK_WHOLE_SIZE;
         buffer_memory_barrier.buffer = _buffer;
 
-        buffer_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        buffer_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        if (src_stage_mask == VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) {
+            buffer_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            buffer_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        } else if (src_stage_mask == VK_PIPELINE_STAGE_TRANSFER_BIT) {
+            buffer_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+            buffer_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        }
 
         return buffer_memory_barrier;
     }
@@ -86,6 +92,15 @@ namespace vkd {
         _descriptor.buffer = buffer();
         _descriptor.offset = 0;
         _descriptor.range = _requested_size;
+
+        update_debug_name();
+    }
+
+    void Buffer::update_debug_name() {
+        if (_buffer != VK_NULL_HANDLE)
+        {
+            _device->set_debug_utils_object_name(_debug_name, VK_OBJECT_TYPE_BUFFER, (uint64_t)_buffer);
+        }
     }
 
     void Buffer::copy(Buffer& src, size_t sz, VkCommandBuffer buf) {

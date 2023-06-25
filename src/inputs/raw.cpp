@@ -6,6 +6,10 @@
 #include "compute/kernel.hpp"
 #include "imgui/imgui.h"
 #include "host_cache.hpp"
+#include "ocio/ocio_functional.hpp"
+#include "ocio/ocio_static.hpp"
+
+#include "host_scheduler.hpp"
 
 #define LIBRAW_NO_WINSOCK2 
 #include "libraw/libraw.h"
@@ -23,7 +27,6 @@ namespace vkd {
         _path_param->as<std::string>().set_default("");
 
         _frame_param = make_param<ParameterType::p_frame>(*this, "frame", 0);
-        _single_frame = make_param<ParameterType::p_bool>(*this, "single_frame", 0);
         _info_box = make_param<ParameterType::p_string>(*this, "info_box", 0, {"multiline"});
         _info_box->as<std::string>().set_default("");
 
@@ -31,6 +34,11 @@ namespace vkd {
     }
 
     Raw::~Raw() {
+        if (_process_task) {
+            ts().wait(_process_task);
+        }
+        
+        _process_task = nullptr;
     }
 
 
@@ -70,36 +78,29 @@ namespace vkd {
             throw GraphException("No path provided to raw node.");
         } 
 
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = Semaphore::make(_device);
+        
 
-        auto ptr = _device->host_cache().get(_path_param->as<std::string>().get());
+        _dcraw_colour_space = make_param<int>(*this, "dcraw colour", 0, {"enum"});
+        /*
 
-        if (ptr) {
-            auto dim = ptr->dim();
-            _width = dim.x;
-            _height = dim.y;
-        } else {
-            LibRaw imProc{};
+  static const char *name[] = {"sRGB",          "Adobe RGB (1998)",
+                               "WideGamut D65", "ProPhoto D65",
+                               "XYZ",           "ACES",
+                               "DCI-P3 D65",    "Rec. 2020"};
 
-            imProc.imgdata.params.output_bps = 16;
-            imProc.imgdata.params.output_color = 0;
+        */
 
-            imProc.open_file(_path_param->as<std::string>().get().c_str());
+        std::vector<std::string> dcraw_names = {
+            "srgb/rec709", "adobe rgb", 
+            "widegamut d65", "prophoto d65", 
+            "xyz", "aces 2065-1",
+            "p3d65", "rec2020"
+        };
 
-            _width = imProc.imgdata.sizes.width;
-            _height = imProc.imgdata.sizes.height;
-
-            _info_box->as<std::string>().set(get_metadata(imProc));
-
-            imProc.unpack();
-            imProc.dcraw_process();
-
-            auto cr = StaticHostImage::make(_width, _height, 4, sizeof(uint16_t));
-            ptr = cr.get();
-            memcpy(ptr->data(), imProc.imgdata.image, ptr->size());
-            _device->host_cache().add(_path_param->as<std::string>().get(), std::move(cr));
-        }
+        _dcraw_colour_space->as<int>().min(0);
+        _dcraw_colour_space->as<int>().max(dcraw_names.size());
+        _dcraw_colour_space->as<int>().set_default(5);
+        _dcraw_colour_space->enum_names(dcraw_names);
 
         _uploader = std::make_unique<ImageUploader>(_device);
         _uploader->init(_width, _height, ImageUploader::InFormat::libraw_short, ImageUploader::OutFormat::float32, param_hash_name());
@@ -109,13 +110,67 @@ namespace vkd {
 
         _uploader->set_push_arg_by_name("vkd_shortmax", (float)16000.0f);//imProc.imgdata.color.maximum);
 
-        //in.setFrameBuffer(reinterpret_cast<Imf::Rgba *>(_uploader->get_main()) - dx - dy * dim.x, 1, dim.x);
-        //in.readPixels(win.min.y, win.max.y);
-
-        //memcpy(_uploader->get_main(), imProc.imgdata.image, sizeof(uint16_t) * 4 * _width * _height);
-        memcpy(_uploader->get_main(), ptr->data(), ptr->size());
-
         _current_frame = 0;
+
+        _ocio = std::make_unique<OcioNode>(OcioNode::Type::In);
+        _ocio->init(*this);
+
+        std::unique_ptr<LibRaw> imProcPtr = std::make_unique<LibRaw>();
+        auto&& imProc = *imProcPtr;
+        imProc.open_file(_path_param->as<std::string>().get().c_str());
+        _width = imProc.imgdata.sizes.width;
+        _height = imProc.imgdata.sizes.height;
+
+        _uploader->init(_width, _height, ImageUploader::InFormat::libraw_short, ImageUploader::OutFormat::float32, param_hash_name());
+    }
+
+    void Raw::load_to_uploader() {        
+        auto ptr = _device->host_cache().get(hash());
+
+        if (ptr) {
+            auto dim = ptr->dim();
+            _width = dim.x;
+            _height = dim.y;
+        } else {
+            auto task = std::make_unique<enki::TaskSet>(1, [this](enki::TaskSetPartition range, uint32_t threadnum) mutable {
+                libraw_process();
+            });
+            _process_task = task.get();
+            ts().add(std::move(task));
+            throw PendingException{"dcraw processing..."};
+        }
+
+        _current_dcraw_col_space = _dcraw_colour_space->as<int>().get();
+        
+        memcpy(_uploader->get_main(), ptr->data(), ptr->size());
+    }
+
+    bool Raw::working() const {
+        if (_process_task && !ts().is_complete(_process_task)) {
+            return true;
+        }
+        return false;
+    }
+
+    void Raw::libraw_process() {
+        
+        std::unique_ptr<LibRaw> imProcPtr = std::make_unique<LibRaw>();
+        auto&& imProc = *imProcPtr;
+
+        imProc.imgdata.params.output_bps = 16;
+        imProc.imgdata.params.output_color = _dcraw_colour_space->as<int>().get() + 1;
+
+        imProc.open_file(_path_param->as<std::string>().get().c_str());
+
+        imProc.unpack();
+        imProc.dcraw_process();
+
+        _info_box->as<std::string>().set(get_metadata(imProc));
+
+        auto cr = StaticHostImage::make(_width, _height, 4, sizeof(uint16_t));
+        memcpy(cr->data(), imProc.imgdata.image, cr->size());
+
+        _device->host_cache().add(hash(), std::move(cr));
     }
 
     void Raw::allocate(VkCommandBuffer buf) {
@@ -126,13 +181,16 @@ namespace vkd {
         _uploader->deallocate();
     }
 
-    void Raw::post_init()
-    {
-    }
-
     bool Raw::update(ExecutionType type) {
-        
+
         bool update = false;
+        if (_process_task && !_process_task->GetIsComplete()) {
+            return false;
+        } else if (_process_task) {
+            _process_task = nullptr;
+            update = true;
+        }
+        
         for (auto&& pmap : _params) {
             for (auto&& el : pmap.second) {
                 if (el.second->changed()) {
@@ -142,63 +200,30 @@ namespace vkd {
         }
         if (update) {
 
+            if (_current_dcraw_col_space != _dcraw_colour_space->as<int>().get()) {
+                load_to_uploader();
+            }
+
             if (_reset->as<bool>().get()) {
                 _reset->as<bool>().set(false);
 
-                LibRaw imProc{};
-
-                imProc.imgdata.params.output_bps = 16;
-                imProc.imgdata.params.output_color = 0;
-
-                imProc.open_file(_path_param->as<std::string>().get().c_str());
-
-                _info_box->as<std::string>().set(get_metadata(imProc));
+                Hash h{_path_param->as<std::string>().get(), _current_dcraw_col_space};
+                _device->host_cache().remove(h);
             }
+
+            _ocio->update(*this, _uploader->get_gpu());
         }
-/*
-        auto frame = _frame_param->as<Frame>().get();
-
-        auto start_block = _block.frame_start_block->as<Frame>().get();
-        auto end_block = _block.frame_end_block->as<Frame>().get();
-
-        if (frame.index < start_block.index || frame.index > end_block.index) {
-            memset(_staging_buffer_ptr, 0, _buffer_size);
-            if (!_blanked) {
-                _blanked = true;
-                update = true;
-            }
-            return update;
-        }
-
-        _blanked = false;
-*/
-
-        // Wait for new frame
-        if (_decode_next_frame) {
-            
-            // read frame here
-/*
-            uint8_t * ptr = nullptr;
-
-            for (int j = 0; j < _height; ++j) {
-                memcpy((uint8_t*)_staging_buffer_ptr + j * _width * 4 *sizeof(uint16_t), ptr + j * _width * 4 * sizeof(uint16_t), _width * 4 * sizeof(uint16_t));
-            }
-*/
-            _decode_next_frame = false;
-            update = true;
-        }
-
 
         return update;
     }
 
-    void Raw::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _uploader->commands(_compute_command_buffer);
-        end_command_buffer(_compute_command_buffer);
+    void Raw::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _uploader->commands(command_buffer());
+        _ocio->execute(command_buffer(), _width, _height);
+        command_buffer().end();
 
-        _last_fence = fence;
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+        stream.submit(command_buffer());
     }
 
 }

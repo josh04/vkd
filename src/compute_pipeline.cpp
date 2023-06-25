@@ -21,9 +21,6 @@ namespace vkd {
     }
 
     void ComputePipeline::create(VkDescriptorSetLayout desc_set_layout, ComputeShader * shader_stage, std::vector<VkSpecializationMapEntry> specialisations) {
-
-        
-
         _bind_point = VK_PIPELINE_BIND_POINT_COMPUTE;
         _layout->create(desc_set_layout);
         VkComputePipelineCreateInfo compute_pipeline_create_info = {};

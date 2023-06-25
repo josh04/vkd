@@ -6,6 +6,7 @@ set(LIBVKD_COMPUTE_SOURCE
     crop.cpp
     custom.cpp
     exposure.cpp
+    ffmpeg_loop.cpp
     gaussian.cpp
     invert.cpp
     kernel.cpp

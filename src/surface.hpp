@@ -9,7 +9,7 @@ namespace vkd {
     class Surface {
     public:
         Surface(std::shared_ptr<Instance> instance);
-        ~Surface() = default;
+        ~Surface();
         Surface(Surface&&) = delete;
         Surface(const Surface&) = delete;
 

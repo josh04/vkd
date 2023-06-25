@@ -1,4 +1,5 @@
 #include <iostream>
+#include "console.hpp"
 #include "renderdoc_integration.hpp"
 
 #include "renderdoc_app.h"
@@ -23,7 +24,7 @@ namespace vkd {
             int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_1_2, (void **)&rdoc_api);
 
             if (ret != 1) {
-                std::cout << "RenderDoc DLL not loaded, graph profiling will be unavailable." << std::endl;
+                console << "RenderDoc DLL not loaded, graph profiling will be unavailable." << std::endl;
                 rdoc_api = nullptr;
                 return;
             }
@@ -31,11 +32,11 @@ namespace vkd {
             _instance = instance;
             _hwnd = window;
 
-            std::cout << "RenderDoc DLL loaded." << std::endl;
+            console << "RenderDoc DLL loaded." << std::endl;
 
             rdoc_api->SetActiveWindow(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(instance), window);
         } else {
-            std::cout << "RenderDoc DLL not detected." << std::endl;
+            console << "RenderDoc DLL not detected." << std::endl;
         }
     }
 #endif
@@ -46,7 +47,7 @@ namespace vkd {
 
     void renderdoc_capture() {
         if (renderdoc_enabled()) {
-            std::cout << "Triggering RenderDoc capture." << std::endl;
+            console << "Triggering RenderDoc capture." << std::endl;
             rdoc_api->TriggerCapture(); 
             _capture = true;
         }
@@ -54,7 +55,7 @@ namespace vkd {
     
     void renderdoc_start_frame() {
         if (renderdoc_enabled() && _capture) {
-            //std::cout << "Starting..." << std::endl;
+            //console << "Starting..." << std::endl;
             //rdoc_api->StartFrameCapture(_instance, _hwnd);  
             _capture = false;
             _started = true;
@@ -64,7 +65,7 @@ namespace vkd {
     void renderdoc_end_frame() {
         if (renderdoc_enabled() && _started) {
             //uint32_t ret = rdoc_api->EndFrameCapture(_instance, _hwnd);  
-            //std::cout << "...finished. Status: " << ret << std::endl;
+            //console << "...finished. Status: " << ret << std::endl;
             _started = false;
         }
     }

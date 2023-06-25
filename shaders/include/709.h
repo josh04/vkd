@@ -4,7 +4,7 @@ vec4 bt709rgbyuv(const vec4 rgb) {
     const float u = rgb.x*-0.1146 +   rgb.y*-0.3854 +   rgb.z*0.5;
     const float v = rgb.x*0.5 +       rgb.y*-0.4542 +   rgb.z*-0.0458;
      
-    return vec4(y, (u*1.023f)+0.5f, (v*1.023f)+0.5f, rgb.w);
+    return vec4(y, (u/**1.023f*/)+0.5f, (v/**1.023f*/)+0.5f, rgb.w);
 }
 
 vec4 bt709yuvrgb(vec4 yuv) {

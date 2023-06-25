@@ -14,7 +14,7 @@ namespace vkd {
         _desc_pool->add_storage_buffer(1);
         _desc_pool->create(1); // one for gfx, one for compute
 
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
         
 		std::default_random_engine engine(0);// : (unsigned)time(nullptr));
 		std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
@@ -50,42 +50,39 @@ namespace vkd {
         _compute_desc_set_layout->create();
 
         _compute_desc_set = std::make_shared<DescriptorSet>(_device, _compute_desc_set_layout, _desc_pool);
-        _compute_desc_set->add_buffer(*_compute_storage_buffer);
-        _compute_desc_set->add_buffer(*_compute_uniform_buffer);
+        _compute_desc_set->add_buffer(_compute_storage_buffer);
+        _compute_desc_set->add_buffer(_compute_uniform_buffer);
         _compute_desc_set->create();
         
 		auto compute_shader = std::make_unique<ComputeShader>(_device);
         compute_shader->create("shaders/compute/particle.comp.spv", "main");
         _compute_pipeline->create(_compute_desc_set_layout->get(), compute_shader.get());
 
-        begin_command_buffer(_compute_command_buffer);
-        _compute_pipeline->bind(_compute_command_buffer, _compute_desc_set->get());
-		vkCmdDispatch(_compute_command_buffer, PARTICLE_COUNT / 256, 1, 1);
-        end_command_buffer(_compute_command_buffer);
-
-        _compute_complete = Semaphore::make(_device);
+        command_buffer().begin();
+        _compute_pipeline->bind(command_buffer().get(), _compute_desc_set);
+		vkCmdDispatch(command_buffer().get(), PARTICLE_COUNT / 256, 1, 1);
+        command_buffer().end();
     }
 
-    void Particles::post_init()
-    {
-    }
-
-    void Particles::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void Particles::execute(ExecutionType type, Stream& stream) {
 		// Wait for rendering finished
 		VkPipelineStageFlags wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
+		auto&& semaphore = stream.semaphore();
+
+		auto buf = command_buffer().get();
 		// Submit compute commands
 		VkSubmitInfo submit_info = {};
 		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submit_info.commandBufferCount = 1;
-		submit_info.pCommandBuffers = &_compute_command_buffer;
-		submit_info.waitSemaphoreCount = (wait_semaphore != VK_NULL_HANDLE) ? 1 : 0;
-		submit_info.pWaitSemaphores = (wait_semaphore != VK_NULL_HANDLE) ? &wait_semaphore->get() : nullptr;
+		submit_info.pCommandBuffers = &buf;
+		submit_info.waitSemaphoreCount = 1;
+		submit_info.pWaitSemaphores = &semaphore.get();
 		submit_info.pWaitDstStageMask = &wait_stage_mask;
 		submit_info.signalSemaphoreCount = 1;
-		submit_info.pSignalSemaphores = &_compute_complete->get();
+		submit_info.pSignalSemaphores = &semaphore.get();
 		{
-			std::lock_guard<std::mutex> lock(_device->queue_mutex());
+			std::scoped_lock lock(_device->queue_mutex());
 			VK_CHECK_RESULT(vkQueueSubmit(_device->compute_queue(), 1, &submit_info, VK_NULL_HANDLE));
 		}
 

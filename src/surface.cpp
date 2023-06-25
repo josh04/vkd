@@ -16,6 +16,12 @@ namespace vkd {
         ext_vkGetPhysicalDeviceSurfacePresentModesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>(vkGetInstanceProcAddr(instance->instance(), "vkGetPhysicalDeviceSurfacePresentModesKHR"));
     }
 
+    Surface::~Surface() {
+        if (_surface != VK_NULL_HANDLE) {
+            vkDestroySurfaceKHR(_instance->get(), _surface, nullptr);
+        }
+    }
+
     void Surface::init(SDL_Window * window, SDL_Renderer * renderer, const std::shared_ptr<Device>& device) {
         _device = device;
         SDL_SysWMinfo wminfo;

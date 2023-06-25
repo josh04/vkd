@@ -14,7 +14,7 @@ namespace vkd {
 
     void Saturation::kernel_init() {
         _kernel = std::make_shared<Kernel>(_device, param_hash_name());
-        _kernel->init("shaders/compute/saturation.comp.spv", "main", {16, 16, 1});
+        _kernel->init("shaders/compute/saturation.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_kernel);
         
         _sat_param = _kernel->get_param_by_name("saturation");

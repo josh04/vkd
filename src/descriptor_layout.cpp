@@ -2,7 +2,12 @@
 #include "device.hpp"
 
 namespace vkd {
-    
+    DescriptorLayout::~DescriptorLayout() {
+        if (_layout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(_device->logical_device(), _layout, nullptr);
+        }
+    }
+
     void DescriptorLayout::add(VkDescriptorType type, uint32_t count, VkShaderStageFlags stage) {
         VkDescriptorSetLayoutBinding layout_binding = {};
         layout_binding.descriptorType = type;

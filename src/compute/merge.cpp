@@ -18,14 +18,13 @@ namespace vkd {
         _size = {0, 0};
         
         _merge = std::make_shared<Kernel>(_device, param_hash_name());
-        _merge->init("shaders/compute/merge.comp.spv", "main", {16, 16, 1});
+        _merge->init("shaders/compute/merge.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_merge);
         
         _blank = std::make_shared<Kernel>(_device, param_hash_name());
-        _blank->init("shaders/compute/blank.comp.spv", "main", {16, 16, 1});
+        _blank->init("shaders/compute/blank.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_blank);
 
-        _compute_complete = Semaphore::make(_device);
 
         auto image = _inputs[0]->get_output_image();
         if (!image) {
@@ -49,10 +48,6 @@ namespace vkd {
         _image->deallocate();
     }
 
-    void Merge::post_init()
-    {
-    }
-
     bool Merge::update(ExecutionType type) {
         bool update = false || _first_run;
         _first_run = false;
@@ -67,7 +62,7 @@ namespace vkd {
         return update;
     }
 
-    void Merge::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void Merge::execute(ExecutionType type, Stream& stream) {
         _command_buffer->begin();
         _blank->dispatch(*_command_buffer.get(), _size.x, _size.y);
 
@@ -78,6 +73,6 @@ namespace vkd {
             _merge->dispatch(*_command_buffer.get(), _size.x, _size.y);
         }
         _command_buffer->end();
-        _command_buffer->submit(wait_semaphore, _compute_complete, fence);
+        stream.submit(_command_buffer);
     }
 }

@@ -8,7 +8,7 @@ namespace vkd {
     class DescriptorLayout {
 	public:
 		DescriptorLayout(std::shared_ptr<Device> device) : _device(device) {}
-		~DescriptorLayout() = default;
+		~DescriptorLayout();
 		DescriptorLayout(DescriptorLayout&&) = delete;
 		DescriptorLayout(const DescriptorLayout&) = delete;
 
@@ -23,6 +23,6 @@ namespace vkd {
 		std::shared_ptr<Device> _device = nullptr;
 		std::vector<VkDescriptorSetLayoutBinding> _bindings;
 		std::vector<VkDescriptorSetLayoutBinding> _created_bindings;
-		VkDescriptorSetLayout _layout;
+		VkDescriptorSetLayout _layout = VK_NULL_HANDLE;
 	};
 }

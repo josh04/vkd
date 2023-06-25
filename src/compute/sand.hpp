@@ -28,14 +28,13 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<Sand>(_width, _height); }
 
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
         //Buffer& storage_buffer() { return *_compute_storage_buffer; }
-        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
-        auto compute_complete() const { return _compute_complete; }
+        
         std::shared_ptr<Image> get_output_image() const override { return _sand_image; }
     private:
         int32_t _width, _height;
@@ -60,10 +59,9 @@ namespace vkd {
 			int padding[3];
 		} _ubo;
 
-        VkCommandBuffer _compute_command_buffer;
+        
 
         uint8_t * _mapped_uniform_buffer = nullptr;
 
-        SemaphorePtr _compute_complete;
     };
 }

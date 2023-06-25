@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <future>
 
 #include "TaskScheduler.h"
 
@@ -48,7 +49,7 @@ namespace vkd {
     class NodeWindow {
     public:
         NodeWindow();
-        NodeWindow(int32_t id);
+        NodeWindow(int32_t id, const std::string& name_id);
         ~NodeWindow();
         NodeWindow(NodeWindow&&) = delete;
         NodeWindow(const NodeWindow&) = delete;
@@ -111,9 +112,14 @@ namespace vkd {
         void build_nodes(GraphBuilder& graph_builder);
 
         const auto& sequencer_line() const { return _sequencer_line; }
+
+        const auto& name_id() const { return _name_id; }
+
+        void focus() { _focus = true; }
     private:
         imnodes::EditorContext * _imnodes_context = nullptr;
         std::string _window_name = "node window ";
+        std::string _name_id = "";
 
         int32_t _id = -1;
 
@@ -152,13 +158,15 @@ namespace vkd {
 
         std::shared_ptr<SequencerLine> _sequencer_line = nullptr;
 
-        std::vector<std::pair<int32_t, std::unique_ptr<enki::TaskSet>>> _save_tasks;
+        std::vector<std::pair<int32_t, std::future<bool>>> _save_tasks;
 
+        bool _focus = false;
     };
 
     struct SerialiseGraph {
         int _id;
         std::string _window_name;
+        std::string _name_id;
         
         int32_t _next_node = 0;
         int32_t _next_pin = 0;
@@ -198,6 +206,9 @@ namespace vkd {
             }
             if (version >= 3) {
                 ar(save_map);
+            }
+            if (version >= 4) {
+                ar(_name_id);
             }
         }
     };

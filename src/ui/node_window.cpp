@@ -24,11 +24,13 @@
 #include "timeline.hpp"
 
 #include "inspector.hpp"
+#include "host_scheduler.hpp"
 
 #include <set>
 #include <vector>
 #include <algorithm>
 #include <deque>
+#include <optional>
 
 #include "cereal/cereal.hpp"
 
@@ -36,11 +38,14 @@
 
 #include "imgui/ImGuiColorTextEdit/TextEditor.h"
 
+#include "services/graph_requests.hpp"
+#include "outputs/async_image_output.hpp"
+
 CEREAL_CLASS_VERSION(ImVec2, 0);
 CEREAL_CLASS_VERSION(vkd::NodeWindow, 0);
 CEREAL_CLASS_VERSION(vkd::NodeWindow::Node, 1);
 CEREAL_CLASS_VERSION(vkd::NodeWindow::Link, 0);
-CEREAL_CLASS_VERSION(vkd::SerialiseGraph, 3);
+CEREAL_CLASS_VERSION(vkd::SerialiseGraph, 4);
 
 template<class Archive>
 void serialize(Archive & archive, ImVec2& vec, const uint32_t version) {
@@ -54,9 +59,14 @@ namespace vkd {
     int32_t NodeWindow::_next_pin = 0;
     int32_t NodeWindow::_next_link = 0;
 
-    NodeWindow::NodeWindow(int32_t id) : NodeWindow() {
+    NodeWindow::NodeWindow(int32_t id, const std::string& name_id) : NodeWindow() {
         _id = id;
-        _window_name += std::to_string(id);
+        if (name_id.size() > 0) {
+            _window_name += "(" + name_id + ")";
+        } else {
+            _window_name += std::to_string(id);
+        }
+        _name_id = name_id;
     }
 
     NodeWindow::NodeWindow() {
@@ -82,7 +92,24 @@ namespace vkd {
     }
     
     void NodeWindow::initial_input(const Bin::Entry& entry) {
-        auto node = _add_node("ffmpeg");
+        fs::path path{entry.path};
+        path = fs::absolute(path);
+
+        std::string exts = path.extension().string();        
+        std::transform(exts.begin(), exts.end(), exts.begin(), [](unsigned char c){ return std::tolower(c); });
+
+        int32_t node = -1;
+        if (exts == ".mp4" || exts == ".mkv" || exts == ".mov") {
+            node = _add_node("ffmpeg");
+        } else if (exts == ".exr") {
+            node = _add_node("exr");
+        } else if (exts == ".raf") {
+            node = _add_node("raw");
+        } else {
+            console << "Unknown file type picked for initial read: " << exts << std::endl;
+            return;
+        }
+        
         auto search = _nodes.find(node);
         auto new_link_s = *search->second.outputs.begin();
 
@@ -95,9 +122,9 @@ namespace vkd {
 
         ShaderParamMap& map = search->second.node->params();
         map["_"]["path"] = make_param<ParameterType::p_string>(search->second.type, "path", 0);
-        map["_"]["path"]->as<std::string>().set(entry.path);
+        map["_"]["path"]->as<std::string>().set(path.string());
         
-        _sequencer_line->name = entry.path;
+        _sequencer_line->name = path.string();
     }
 
     void NodeWindow::sequencer_size_to_loaded_content() {
@@ -114,6 +141,7 @@ namespace vkd {
     void NodeWindow::draw(bool& updated, Inspector& insp) {
         ImGuiIO& io = ImGui::GetIO();
         
+
         ImGui::SetNextWindowPos(ImVec2(600, 25), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_Once);
 
@@ -121,18 +149,38 @@ namespace vkd {
 
         ImGui::Begin(_window_name.c_str());
 
+        if (_focus) {
+            _focus = false;
+            ImGui::SetWindowFocus();
+        }
+
         auto&& nodemap = vkd::EngineNode::node_type_map();
 
         std::set<std::string> blacklist = {"draw"};
+        // x pos of end of window, for wrapping
+        const float window_far_x = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+        float last_button_far_x = 0;
 
+        ImGuiStyle& style = ImGui::GetStyle();
+        bool first = true;
         for (auto&& node : nodemap) {
             if (blacklist.find(node.second.type) != blacklist.end()) {
                 continue;
             }
-            ImGui::SameLine();
+            
+            float exp_button_size_x = ImGui::CalcTextSize(node.second.display_name.c_str()).x +  2* style.FramePadding.x;
+
+            float next_button_far_x = last_button_far_x + style.ItemSpacing.x + exp_button_size_x; // Expected position if next button was on same line
+
+            if (next_button_far_x < window_far_x && !first) {
+                ImGui::SameLine();
+            }
+            first = false;
+
             if (ImGui::Button(node.second.display_name.c_str())) {
                 _add_node(node.second.type.c_str());
             }
+            last_button_far_x = ImGui::GetItemRectMax().x;
         }
 
         ImGui::BeginChild("nodes", {0.0f, -20.0f});
@@ -140,6 +188,8 @@ namespace vkd {
         imnodes::EditorContextSet(_imnodes_context);
 
         imnodes::BeginNodeEditor();
+
+
         imnodes::PushAttributeFlag(imnodes::AttributeFlags::AttributeFlags_EnableLinkDetachWithDragClick);
         for (auto&& node : _nodes) {
 
@@ -147,16 +197,33 @@ namespace vkd {
                 imnodes::PushColorStyle(imnodes::ColorStyle_TitleBar, IM_COL32(166, 0, 22, 255));
                 imnodes::PushColorStyle(imnodes::ColorStyle_TitleBarHovered, IM_COL32(250, 150, 66, 255));
                 imnodes::PushColorStyle(imnodes::ColorStyle_TitleBarSelected, IM_COL32(250, 150, 66, 255));
+            } else if (node.second.node && node.second.node->get_state() == UINodeState::unconfigured) {
+                imnodes::PushColorStyle(imnodes::ColorStyle_TitleBar, IM_COL32(166, 0, 22, 255));
+                imnodes::PushColorStyle(imnodes::ColorStyle_TitleBarHovered, IM_COL32(250, 150, 66, 255));
+                imnodes::PushColorStyle(imnodes::ColorStyle_TitleBarSelected, IM_COL32(250, 150, 66, 255));
             }
 
             imnodes::BeginNode(node.first);
 
-            if (node.second.node && node.second.node->get_state() == UINodeState::error) {
+            if (node.second.node && (node.second.node->get_state() == UINodeState::error 
+            || node.second.node->get_state() == UINodeState::unconfigured)) {
                 imnodes::PopColorStyle(3);
             }
 
             imnodes::BeginNodeTitleBar();
-            ImGui::TextUnformatted(node.second.display_name.c_str());
+            auto titlestr = node.second.display_name;
+
+            if (node.second.node && node.second.node->real_node() && node.second.node->real_node()->working()) {
+                titlestr += " ";
+                static int tick = 0;
+                for (int i = 0; i < tick / 30; ++i) {
+                    titlestr += ".";
+                }
+                tick = (tick + 1) % 120;
+            }
+            
+            ImGui::TextUnformatted(titlestr.c_str());
+
             imnodes::EndNodeTitleBar();
 
             int i = 0;
@@ -195,6 +262,17 @@ namespace vkd {
 
             ImGui::Dummy(ImVec2(80.0f, 45.0f));
             imnodes::EndNode();
+            
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                if (node.second.node && node.second.node->get_state() == UINodeState::error) {
+                    ImGui::SetTooltip("%s is in an error state", node.second.display_name.c_str());
+                } else if (node.second.node && node.second.node->get_state() == UINodeState::unconfigured) {
+                    ImGui::SetTooltip("%s requires further configuration", node.second.display_name.c_str());
+                } else if (node.second.node && node.second.node->get_state() == UINodeState::normal) {
+                    ImGui::SetTooltip("%s is okay", node.second.display_name.c_str());
+                }
+            }
         }
 
         for (auto&& link : _links) {
@@ -221,7 +299,8 @@ namespace vkd {
         if (imnodes::IsNodeHovered(&node_id) && io.MouseClicked[2] && node_id != _display_node) {
             auto&& search = _nodes.find(node_id);
             if (search != _nodes.end()) {
-                for (auto&& link : search->second.linkToPin) {
+                auto copy = search->second.linkToPin;
+                for (auto&& link : copy) {
                     _remove_link(link.first);
                 }
                 for (auto&& pin : search->second.inputs) {
@@ -291,6 +370,22 @@ namespace vkd {
                             //_open_node_windows.erase
                         }
 
+                        if (fake_node->get_state() == UINodeState::normal)
+                        {
+                            auto block_ = fake_node->real_node()->block_edit_params();
+                            if (block_.has_value()) {
+                                auto&& block = *block_;
+                                ImGui::Text("frame count: %d", block.total_frame_count->as<int32_t>().get());
+                                if (ImGui::Button("resize block")) {
+                                    _sequencer_line->frame_count = block.total_frame_count->as<int32_t>().get();
+                                    _sequencer_line->blocks[0].end = _sequencer_line->blocks[0].start + _sequencer_line->frame_count;
+                                }
+                                if (ImGui::Button("set block name")) {
+                                    _sequencer_line->name = fake_node->node_name();
+                                }
+                            }
+                        }
+
 //void ImGui::Image(ImTextureID user_texture_id, const ImVec2& size, const ImVec2& uv0, const ImVec2& uv1, const ImVec4& tint_col, const ImVec4& border_col)
 
                         if (real_image_node && real_image_node->get_output_image()) {
@@ -300,24 +395,38 @@ namespace vkd {
                             ImVec4 border_col = ImVec4(1.0f, 1.0f, 1.0f, 0.5f); // 50% opaque white
                             //ImGui::Image(real_image_node->get_output_image()->ui_desc_set(), {480, 270}, uv_min, uv_max, tint_col, border_col);
 
-                            std::unique_ptr<enki::TaskSet> task = nullptr;
+                            std::optional<ImmediateFormat> format = std::nullopt;
                             if (ImGui::Button("exr")) {
-                                auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), ImmediateFormat::EXR, real_image_node->get_output_image(), task);
-                                fake_node->set_saved_as(str);
+                                format = {ImmediateFormat::EXR};
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("png")) {
-                                auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), ImmediateFormat::PNG, real_image_node->get_output_image(), task);
-                                fake_node->set_saved_as(str);
+                                format = {ImmediateFormat::PNG};
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("jpg")) {
-                                auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), ImmediateFormat::JPG, real_image_node->get_output_image(), task);
-                                fake_node->set_saved_as(str);
+                                format = {ImmediateFormat::JPG};
                             }
 
-                            if (task != nullptr) {
-                                _save_tasks.emplace_back(std::make_pair(node_id, std::move(task)));
+                            if (format.has_value()) {
+                                // create im/dl node
+                                // do these two
+                                //_viewer_draw->graph_inputs({term});
+                                //node->set_range(term->range());
+                                // push into main ui requests
+                                auto dl_node = std::make_shared<AsyncImageOutput>(*format);
+                                dl_node->graph_inputs({fake_node->real_node()});
+                                dl_node->set_range(fake_node->real_node()->range());
+                                fake_node->real_node()->output_count(fake_node->real_node()->output_count() + 1);
+
+                                GraphRequests::Request request;
+                                request.type = ExecutionType::UI;
+                                request.extra_nodes = {dl_node};
+
+                                //auto str = immediate_exr(fake_node->real_node()->device(), fake_node->node_name(), *format, real_image_node->get_output_image(), task);
+                                //fake_node->set_saved_as(str);
+                                _save_tasks.emplace_back(std::make_pair(node_id, dl_node->get_future()));
+                                GraphRequests::Get().add(request);
                             }
 
                             bool unfin = false;
@@ -325,7 +434,7 @@ namespace vkd {
                             int erase = -1;
                             for (auto&& st : _save_tasks) {
                                 if (st.first == node_id) {
-                                    if (!st.second->GetIsComplete()) {
+                                    if (st.second.wait_for(std::chrono::microseconds(0)) == std::future_status::timeout) {
                                         unfin = true;
                                         break;
                                     } else {
@@ -592,7 +701,7 @@ namespace vkd {
                     node_map.emplace(ini, ptr);
                     node.node = ptr;
                     //ptr->init();
-                    //std::cout << "inited " << ptr << std::endl;
+                    //console << "inited " << ptr << std::endl;
                 }
 
                 for (auto&& link : node.linkToPin) {
@@ -661,12 +770,15 @@ namespace vkd {
             float min = param.as<float>().min();
             float max = param.as<float>().max();
 
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
+
             if (ImGui::SliderFloat(name.c_str(), &p, min, max)) {
                 param.as<float>().set(p);
                 changed = true;
             }
             
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+            if ((ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) || reset_button)
             {
                 param.as<float>().set(param.as<float>().get_default());
                 param.ui_changed_last_tick() = true;
@@ -677,22 +789,58 @@ namespace vkd {
         }
         case ParameterType::p_int:
         {
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
+            if (reset_button) {
+                param.as<int>().set(param.as<int>().get_default());
+                param.ui_changed_last_tick() = true;
+                changed = true;
+            }
+
             int p = param.as<int>().get();
             auto&& tags = param.tags();
+
             if (tags.find("enum") != tags.end()) {
                 auto&& enums = param.enum_names();
-                p = std::clamp(p, 0, (int)enums.size() - 1);
-                if (ImGui::BeginCombo(name.c_str(), enums[p].c_str())) {
-                    for (int i = 0; i < enums.size(); ++i) {
-                        auto&& name = enums[i];
-                        bool is_selected = (p == i);
-                        if (ImGui::Selectable(name.c_str(), is_selected)) {
-                            param.as<int>().set(i);
-                        }
-                        if (is_selected) {
-                            ImGui::SetItemDefaultFocus(); 
+                auto&& values = param.enum_values();
+                if (enums.size()) {
+                    if (values.size()) {
+                        int q = 0;
+                        for (auto&& i : values) {
+                            if (p == i) {
+                                p = q;
+                                break;
+                            }
+                            q++;
                         }
                     }
+                    p = std::clamp(p, 0, (int)enums.size() - 1);
+
+                    if (ImGui::BeginCombo(name.c_str(), enums[p].c_str())) {
+                        for (int i = 0; i < enums.size(); ++i) {
+                            auto&& name = enums[i];
+                            bool is_selected = (p == i);
+                            if (ImGui::Selectable(name.c_str(), is_selected)) {
+                                if (values.size() > i) {
+                                    param.as<int>().set_force(values[i]);
+                                } else {
+                                    param.as<int>().set(i);
+                                }
+                                changed = true;
+                            }
+                            if (is_selected) {
+                                ImGui::SetItemDefaultFocus(); 
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                }
+            } else if (tags.find("raw") != tags.end()) {
+                int min = param.as<int>().min();
+                int max = param.as<int>().max();
+                if (ImGui::InputInt(name.c_str(), &p, min, max)) {
+                    param.as<int>().set(p);
+                    changed = true;
                 }
             } else {
                 int min = param.as<int>().min();
@@ -706,12 +854,31 @@ namespace vkd {
         }
         case ParameterType::p_uint:
         {
-            unsigned int p = param.as<unsigned int>().get();
-            unsigned int min = param.as<unsigned int>().min();
-            unsigned int max = param.as<unsigned int>().max();
-            if (ImGui::SliderInt(name.c_str(), (int*)&p, min, max)) {
-                param.as<unsigned int>().set(p);
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
+            if (reset_button) {
+                param.as<unsigned int>().set(param.as<unsigned int>().get_default());
+                param.ui_changed_last_tick() = true;
                 changed = true;
+            }
+
+            auto&& tags = param.tags();
+            if (tags.find("raw") != tags.end()) {
+                unsigned int p = param.as<unsigned int>().get();
+                unsigned int min = param.as<unsigned int>().min();
+                unsigned int max = param.as<unsigned int>().max();
+                if (ImGui::InputInt(name.c_str(), (int*)&p, min, max)) {
+                    param.as<unsigned int>().set(p);
+                    changed = true;
+                }
+            } else {
+                unsigned int p = param.as<unsigned int>().get();
+                unsigned int min = param.as<unsigned int>().min();
+                unsigned int max = param.as<unsigned int>().max();
+                if (ImGui::SliderInt(name.c_str(), (int*)&p, min, max)) {
+                    param.as<unsigned int>().set(p);
+                    changed = true;
+                }
             }
             break;
         }
@@ -737,8 +904,19 @@ namespace vkd {
             glm::vec2 p = param.as<glm::vec2>().get();
             glm::vec2 min = param.as<glm::vec2>().min();
             glm::vec2 max = param.as<glm::vec2>().max();
+            glm::vec2 def = param.as<glm::vec2>().get_default();
+
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
             if (ImGui::SliderFloat2(name.c_str(), (float*)&p, min.x, max.x)) {
                 param.as<glm::vec2>().set(p);
+                param.ui_changed_last_tick() = true;
+                changed = true;
+            }
+
+            if (reset_button) {
+                param.as<glm::vec2>().set(def);
+                param.ui_changed_last_tick() = true;
                 changed = true;
             }
             break;
@@ -759,58 +937,75 @@ namespace vkd {
                 glm::vec4 max = param.as<glm::vec4>().max();
                 glm::vec4 def = param.as<glm::vec4>().get_default();
 
-
+                ImGui::PushID(0);
+                bool reset_button1 = ImGui::Button("r");
+                ImGui::SameLine();
                 if (ImGui::SliderFloat((name + ".x").c_str(), &p.x, min.x, max.x)) {
                     param.as<glm::vec4>().set(p);
                     changed = true;
                 }
+                ImGui::PopID();
                 
-                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                if ((ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) || reset_button1)
                 {
                     p.x = def.x;
                     param.as<glm::vec4>().set(p);
                     param.ui_changed_last_tick() = true;
                     changed = true;
                 }
+                ImGui::PopID();
 
+                ImGui::PushID(1);
+                bool reset_button2 = ImGui::Button("r");
+                ImGui::SameLine();
                 if (ImGui::SliderFloat((name + ".y").c_str(), &p.y, min.y, max.y)) {
                     param.as<glm::vec4>().set(p);
                     changed = true;
                 }
                 
-                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                if ((ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) || reset_button2)
                 {
                     p.y = def.y;
                     param.as<glm::vec4>().set(p);
                     param.ui_changed_last_tick() = true;
                     changed = true;
                 }
+                ImGui::PopID();
 
+                ImGui::PushID(2);
+                bool reset_button3 = ImGui::Button("r");
+                ImGui::SameLine();
                 if (ImGui::SliderFloat((name + ".z").c_str(), &p.z, min.z, max.z)) {
                     param.as<glm::vec4>().set(p);
                     changed = true;
                 }
                 
-                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                if ((ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) || reset_button3)
                 {
                     p.z = def.z;
                     param.as<glm::vec4>().set(p);
                     param.ui_changed_last_tick() = true;
                     changed = true;
                 }
+                ImGui::PopID();
+
                 if (!vec3) {
+                    ImGui::PushID(3);
+                    bool reset_button4 = ImGui::Button("r");
+                    ImGui::SameLine();
                     if (ImGui::SliderFloat((name + ".w").c_str(), &p.w, min.w, max.w)) {
                         param.as<glm::vec4>().set(p);
                         changed = true;
                     }
                     
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                    if ((ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) || reset_button4)
                     {
                         p.w = def.w;
                         param.as<glm::vec4>().set(p);
                         param.ui_changed_last_tick() = true;
                         changed = true;
                     }
+                ImGui::PopID();
                 }
             } else if (tags.find("label") != tags.end()) {
                 if (tags.find("rgba") != tags.end()) {
@@ -819,6 +1014,15 @@ namespace vkd {
                     ImGui::Text("%s x: %f y: %f z: %f w: %f", name.c_str(), p.x, p.y, p.z, p.w);
                 }
             } else {
+
+                bool reset_button = ImGui::Button("r");
+                ImGui::SameLine();
+                if (reset_button) {
+                    param.as<glm::vec4>().set(param.as<glm::vec4>().get_default());
+                    param.ui_changed_last_tick() = true;
+                    changed = true;
+                }
+
                 if (!vec3) {
                     if (ImGui::InputFloat4(name.c_str(), (float*)&p)) {
                         param.as<glm::vec4>().set(p);
@@ -841,6 +1045,15 @@ namespace vkd {
                     insp.set_current_parameter(param.as_ptr<glm::ivec2>());
                 }
             } else {
+
+                bool reset_button = ImGui::Button("r");
+                ImGui::SameLine();
+                if (reset_button) {
+                    param.as<glm::ivec2>().set(param.as<glm::ivec2>().get_default());
+                    param.ui_changed_last_tick() = true;
+                    changed = true;
+                }
+
                 glm::ivec2 p = param.as<glm::ivec2>().get();
                 glm::ivec2 min = param.as<glm::ivec2>().min();
                 glm::ivec2 max = param.as<glm::ivec2>().max();
@@ -853,6 +1066,14 @@ namespace vkd {
         }
         case ParameterType::p_ivec4:
         {
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
+            if (reset_button) {
+                param.as<glm::ivec4>().set(param.as<glm::ivec4>().get_default());
+                param.ui_changed_last_tick() = true;
+                changed = true;
+            }
+
             glm::ivec4 p = param.as<glm::ivec4>().get();
             if (ImGui::InputInt4(name.c_str(), (int*)&p)) {
                 param.as<glm::ivec4>().set(p);
@@ -862,6 +1083,14 @@ namespace vkd {
         }
         case ParameterType::p_uvec2:
         {
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
+            if (reset_button) {
+                param.as<glm::uvec2>().set(param.as<glm::uvec2>().get_default());
+                param.ui_changed_last_tick() = true;
+                changed = true;
+            }
+
             glm::uvec2 p = param.as<glm::uvec2>().get();
             glm::uvec2 min = param.as<glm::uvec2>().min();
             glm::uvec2 max = param.as<glm::uvec2>().max();
@@ -873,6 +1102,14 @@ namespace vkd {
         }
         case ParameterType::p_uvec4:
         {
+            bool reset_button = ImGui::Button("r");
+            ImGui::SameLine();
+            if (reset_button) {
+                param.as<glm::uvec4>().set(param.as<glm::uvec4>().get_default());
+                param.ui_changed_last_tick() = true;
+                changed = true;
+            }
+
             glm::uvec4 p = param.as<glm::uvec4>().get();
             if (ImGui::InputInt4(name.c_str(), (int*)&p)) {
                 param.as<glm::uvec4>().set(p);
@@ -942,6 +1179,7 @@ namespace vkd {
 
         _id = data._id;
         _window_name = data._window_name;
+        _name_id = data._name_id;
 
         _next_node = data._next_node;
         _next_pin = data._next_pin;

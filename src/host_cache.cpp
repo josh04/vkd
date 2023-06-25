@@ -16,16 +16,17 @@ namespace vkd {
         _dim = {width, height};
     }
 
-    bool HostCache::add(const std::string& name, std::unique_ptr<StaticHostImage> image) {
+    bool HostCache::add(const Hash& name, std::unique_ptr<StaticHostImage> image) {
+        bool was_new = true;
         if (_cache.find(name) != _cache.end()) {
-            return false;
+            was_new = false;
         }
-
+        _cache.erase(name);
         _cache.emplace(name, std::move(image));
-        return true;
+        return was_new;
     }
 
-    bool HostCache::remove(const std::string& name) {
+    bool HostCache::remove(const Hash& name) {
         if (_cache.find(name) == _cache.end()) {
             return false;
         }
@@ -33,7 +34,7 @@ namespace vkd {
         return true;
     }
 
-    StaticHostImage * HostCache::get(const std::string& name) {
+    StaticHostImage * HostCache::get(const Hash& name) {
         auto search = _cache.find(name);
         if (search != _cache.end()) {
             _least_recent_used.erase(std::remove(std::begin(_least_recent_used), std::end(_least_recent_used), name), std::end(_least_recent_used));

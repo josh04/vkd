@@ -1,5 +1,6 @@
 #pragma once
 #include "vulkan.hpp"
+#include "device.hpp"
 
 namespace vkd {
     static VkSampler create_sampler(VkDevice device) {
@@ -18,4 +19,27 @@ namespace vkd {
 		VK_CHECK_RESULT(vkCreateSampler(device, &sampler_create_info, nullptr, &sampler));
 		return sampler;
     }
+
+	class ScopedSampler;
+	using ScopedSamplerPtr = std::unique_ptr<ScopedSampler>;
+	class ScopedSampler {
+	public:
+		ScopedSampler(const std::shared_ptr<Device>& device) : _device(device), _sampler(create_sampler(device->logical_device())) {
+
+		}
+
+		~ScopedSampler() {
+			vkDestroySampler(_device->logical_device(), _sampler, nullptr);
+		}
+
+		static ScopedSamplerPtr make(const std::shared_ptr<Device>& device) {
+			return std::make_unique<ScopedSampler>(device);
+		}
+
+		auto get() const { return _sampler; }
+
+	private:
+		std::shared_ptr<Device> _device = nullptr;
+		VkSampler _sampler = VK_NULL_HANDLE;
+	};
 }

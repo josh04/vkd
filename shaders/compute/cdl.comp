@@ -24,9 +24,9 @@ void main()
     
     vec4 inp = imageLoad(inputTex, coord);
 
-    float r = pow(max((inp.x * (push.slope_master + push.slope.x)) + (push.offset_master + push.offset.x), 0.0), push.power_master + push.power.x);
-    float g = pow(max((inp.y * (push.slope_master + push.slope.y)) + (push.offset_master + push.offset.y), 0.0), push.power_master + push.power.y);
-    float b = pow(max((inp.z * (push.slope_master + push.slope.z)) + (push.offset_master + push.offset.z), 0.0), push.power_master + push.power.z);
+    float r = pow(max((inp.x * max(push.slope_master + push.slope.x, 0.0)) + (push.offset_master + push.offset.x), 0.0), max(push.power_master + push.power.x, 0.0));
+    float g = pow(max((inp.y * max(push.slope_master + push.slope.y, 0.0)) + (push.offset_master + push.offset.y), 0.0), max(push.power_master + push.power.y, 0.0));
+    float b = pow(max((inp.z * max(push.slope_master + push.slope.z, 0.0)) + (push.offset_master + push.offset.z), 0.0), max(push.power_master + push.power.z, 0.0));
     
     vec4 weights = vec4(0.2126, 0.7152, 0.0722, 0.0);
     vec4 rgb = vec4(r, g, b, 1.0);

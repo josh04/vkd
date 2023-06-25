@@ -13,12 +13,12 @@ namespace vkd {
     REGISTER_NODE("bilateral", "bilateral", Bilateral);
 
     void Bilateral::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
         _blur = std::make_shared<Kernel>(_device, param_hash_name());
-        _blur->init("shaders/compute/bilateral.comp.spv", "main", {16, 16, 1});
+        _blur->init("shaders/compute/bilateral.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_blur);
 
        auto sigmaS = _blur->get_param_by_name("sigma_s");
@@ -36,7 +36,6 @@ namespace vkd {
        half_window->as<int>().min(1);
        half_window->as<int>().max(200);
 
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -54,10 +53,6 @@ namespace vkd {
         _blur->set_arg(1, _image);
     }
 
-    void Bilateral::post_init()
-    {
-    }
-
     bool Bilateral::update(ExecutionType type) {
         bool update = false;
         for (auto&& pmap : _params) {
@@ -69,15 +64,15 @@ namespace vkd {
         }
 
         if (update) {
-            begin_command_buffer(_compute_command_buffer);
-            _blur->dispatch(_compute_command_buffer, _size.x, _size.y);
-            end_command_buffer(_compute_command_buffer);
+            command_buffer().begin();
+            _blur->dispatch(command_buffer(), _size.x, _size.y);
+            command_buffer().end();
         }
 
         return update;
     }
 
-    void Bilateral::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Bilateral::execute(ExecutionType type, Stream& stream) {
+        stream.submit(command_buffer());
     }
 }

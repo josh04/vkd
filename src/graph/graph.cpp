@@ -2,10 +2,12 @@
 #include "vulkan.hpp"
 #include "device.hpp"
 #include "fence.hpp"
+#include "stream.hpp"
 #include "command_buffer.hpp"
 #include "memory/memory_pool.hpp"
+#include "fake_node.hpp"
 
-#include "TaskScheduler.h"
+#include "host_scheduler.hpp"
 
 namespace vkd {
 
@@ -37,39 +39,50 @@ namespace vkd {
         if (!_device) {
             throw std::runtime_error("Graph had no device.");
         }
-        _fence = Fence::create(_device, true);
 
         for (auto&& node : _nodes) {
             try {
                 node->init();
             } catch (GraphException& e) {
+                console << "Error in graph init: " << e.what() << std::endl;
                 node->set_state(UINodeState::error);
                 throw;
             }
         }
-        for (auto&& rit = _nodes.rbegin(); rit != _nodes.rend(); rit++) {
+        /* for (auto&& rit = _nodes.rbegin(); rit != _nodes.rend(); rit++) {
             try {
                 (*rit)->post_init();
             } catch (GraphException& e) {
+                console << "Error in graph post_init: " << e.what() << std::endl;
                 (*rit)->set_state(UINodeState::error);
                 throw;
             }
-        }
+        } */
     }
     
-    bool Graph::update(ExecutionType type) {
-        _fence->wait();
-        bool do_update = false;
+    Graph::GraphUpdate Graph::update(ExecutionType type, const StreamPtr& stream) {
+        //stream.flush();
+
+        GraphUpdate do_update = GraphUpdate::NoUpdate;
         for (auto&& node : _nodes) {
             try {
                 if (node->range_contains(frame())) {
-                    do_update = node->update(type) || do_update;
+                    if (node->update(type)) {
+                        do_update = GraphUpdate::Updated;
+                    }
                 }
+                node->set_state(UINodeState::normal);
             } catch (UpdateException& e) {
-                node->set_state(UINodeState::error);
+                console << "UpdateException in graph update: " << e.what() << std::endl;
+                node->set_state(UINodeState::unconfigured);
                 break;
             } catch (GraphException& e) {
+                console << "Error in graph update: " << e.what() << std::endl;
                 node->set_state(UINodeState::error);
+                break;
+            } catch (RebakeException& e) {
+                console << "Graph asked to rebake: " << e.what() << std::endl;
+                do_update = GraphUpdate::Rebake;
                 break;
             }
         }
@@ -86,17 +99,7 @@ namespace vkd {
         }
     }
 
-    std::vector<SemaphorePtr> Graph::semaphores() {
-        std::vector<SemaphorePtr> sems;
-        for (auto&& node : _nodes) {
-            if (node->range_contains(frame())) {
-                sems.push_back(node->wait_prerender());
-            }
-        }
-        return sems;
-    }
-
-    void Graph::execute(ExecutionType type) {
+    void Graph::execute(ExecutionType type, const StreamPtr& stream, const std::vector<std::shared_ptr<EngineNode>>& extra_nodes) {
         
         std::vector<vkd::EngineNode *> _nodes_to_run;
         _nodes_to_run.reserve(_nodes.size() / 2);
@@ -106,59 +109,68 @@ namespace vkd {
             }
         }
 
+        for (auto&& node : extra_nodes) {
+            if (node && node->range_contains(frame())) {
+                _nodes_to_run.push_back(node.get());
+            }
+        }
+
         std::map<EngineNode *, int> output_counts;
 
-
         if (_nodes_to_run.size()) {
-            flush();
-            std::vector<std::unique_ptr<enki::TaskSet>> dealloc_tasks;
-            std::vector<CommandBufferPtr> cmd_buffers;
+            stream->flush();
+            //std::vector<CommandBufferPtr> cmd_buffers;
             for (auto&& node : _nodes_to_run) {
                 auto buf = CommandBuffer::make(_device);
                 {
                     auto scope = buf->record();
                     node->allocate(buf->get());
                 }
-                buf->submit();
+                stream->submit(buf);
 
-                if (node != *_nodes_to_run.rbegin()) {
-                    node->execute(type, buf->signal());
-                } else {
-                    node->execute(type, buf->signal(), _fence.get());
+                try {
+                    node->execute(type, *stream);
+                } catch (ImageException& e) {
+                    console << "Node execution failed at " << (node->fake_node() ? node->fake_node()->node_name() : "unknown node") << ": " << e.what() << std::endl;
                 }
 
-                cmd_buffers.emplace_back(std::move(buf));
+                _command_buffers.emplace(buf.get(), std::move(buf));
                 
                 for (auto&& input : node->graph_inputs()) {
                     output_counts[input.get()]++;
                     if (output_counts[input.get()] >= input->output_count()) {
                         
-                        auto task = std::make_unique<enki::TaskSet>(1, [this, input](enki::TaskSetPartition range, uint32_t threadnum) mutable {
+                        auto task = std::make_unique<enki::TaskSet>(1, [this, input, stream, buf = buf.get()](enki::TaskSetPartition range, uint32_t threadnum) mutable {
                             try {
-                                auto fence = Fence::create(_device, false);
-                                fence->submit();
-                                fence->wait();
-                                fence->reset();
+                                
+                                if (stream) {
+                                    auto val = stream->semaphore().increment();
+                                    stream->semaphore().wait(val - 1);
+                                    // important to uncomment to resume deallocing things
+                                    if (input) {
+                                        input->deallocate();
+                                    }
+                                    stream->semaphore().signal(val);
+                                    stream->flush();
+                                }
+                                if (buf) {
+                                    release_command_buffer(buf);
+                                }
 
-                                input->deallocate();
                             } catch (...) {
-                                std::cout << "Unknown error in deallocation task." << std::endl;
+                                console << "Unknown error in deallocation task." << std::endl;
                             }
                         });
 
-                        ts().AddTaskSetToPipe(task.get());
-                        dealloc_tasks.emplace_back(std::move(task));
+                        ts().add(std::move(task));
                     }
                 }
             }
-            for (auto&& task : dealloc_tasks) {
-                ts().WaitforTask(task.get());
-            }
-            
-            auto fence = Fence::create(_device, false);
-            fence->submit();
-            fence->wait();
-            fence->reset();
+            //for (auto&& task : dealloc_tasks) {
+            //    ts().WaitforTask(task.get());
+            //}
+            // look into moving tasks
+            stream->flush();
         }
 
         for (auto&& node : _nodes_to_run) {
@@ -168,19 +180,13 @@ namespace vkd {
         _device->pool().trim(trim_limit);
     }
 
-    void Graph::finish() {
-        flush();
+    void Graph::finish(Stream& stream) {
+        stream.flush();
         for (auto&& node : _nodes) {
             if (node->range_contains(frame())) {
                 node->finish();
             }
         }
-        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, _fence.get());
-    }
-
-    void Graph::flush() {
-        _fence->wait();
-        _fence->reset();
     }
 
     void Graph::ui() {

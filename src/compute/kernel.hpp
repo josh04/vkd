@@ -28,6 +28,7 @@ namespace vkd {
 
     class VKDEXPORT Kernel {
     public:
+        static constexpr std::array<int32_t, 3> default_local_sizes = {16, 16, 1};
         Kernel(std::shared_ptr<Device> device, const std::string& param_hash) : _device(device), _param_hash(param_hash) {}
         ~Kernel() = default;
         Kernel(Kernel&&) = delete;
@@ -36,9 +37,9 @@ namespace vkd {
         static std::shared_ptr<Kernel> make(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes);
         static std::shared_ptr<Kernel> make(EngineNode& node, std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes);
 
-        void init(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = {16, 16, 1});
+        void init(EngineNode& node, std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = default_local_sizes);
         void init(EngineNode& node, std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes);
-        void init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = {16, 16, 1});
+        void init(std::string path, std::string func_name, std::array<int32_t, 3> local_sizes = default_local_sizes);
         void init(std::unique_ptr<ComputeShader> shader, const std::string& hash_name, std::array<int32_t, 3> local_sizes);
 
         std::shared_ptr<DescriptorPool> make_pool();

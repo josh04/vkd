@@ -13,12 +13,12 @@ namespace vkd {
     REGISTER_NODE("rotate", "rotate", Rotate);
 
     void Rotate::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
         _rotate = std::make_shared<Kernel>(_device, param_hash_name());
-        _rotate->init("shaders/compute/rotate.comp.spv", "main", {16, 16, 1});
+        _rotate->init("shaders/compute/rotate.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_rotate);
 
         _mode = _rotate->get_param_by_name("mode");
@@ -26,7 +26,6 @@ namespace vkd {
         _mode->as<int>().min((int)Mode::None);
         _mode->as<int>().max((int)Mode::Max - 1);
 
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         if (_mode->as<int>().get() == (int)Mode::Clockwise90 || _mode->as<int>().get() == (int)Mode::AntiClockwise90) {
@@ -49,10 +48,6 @@ namespace vkd {
         _image->deallocate();
     }
 
-    void Rotate::post_init()
-    {
-    }
-
     bool Rotate::update(ExecutionType type) {
         bool update = false;
 
@@ -67,10 +62,10 @@ namespace vkd {
         return update;
     }
 
-    void Rotate::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _rotate->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Rotate::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _rotate->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
+        stream.submit(command_buffer());
     }
 }

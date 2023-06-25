@@ -7,8 +7,15 @@
 #include "renderpass.hpp"
 #include "shader.hpp"
 #include "vertex_input.hpp"
+#include "descriptor_set.hpp"
 
 namespace vkd {
+	PipelineLayout::~PipelineLayout() {
+		if (_layout != VK_NULL_HANDLE) {
+			vkDestroyPipelineLayout(_device->logical_device(), _layout, nullptr);
+		}
+	}
+
     void PipelineLayout::create(VkDescriptorSetLayout desc_set_layout) {
         // Create the pipeline layout that is used to generate the rendering pipelines that are based on this descriptor set layout
 		// In a more complex scenario you would have different pipeline layouts for different descriptor set layouts that could be reused
@@ -45,6 +52,12 @@ namespace vkd {
         vkCmdBindDescriptorSets(buf, bind_point, _layout, 0, 1, &desc_set, 0, nullptr);
 	}
 
+	PipelineCache::~PipelineCache() {
+		if (_cache != VK_NULL_HANDLE) {
+			vkDestroyPipelineCache(_device->logical_device(), _cache, nullptr);
+		}
+	}
+
     void PipelineCache::create() {
         VkPipelineCacheCreateInfo pipeline_cache_create_info = {};
         memset(&pipeline_cache_create_info, 0, sizeof(VkPipelineCacheCreateInfo));
@@ -52,11 +65,18 @@ namespace vkd {
         VK_CHECK_RESULT(vkCreatePipelineCache(_device->logical_device(), &pipeline_cache_create_info, nullptr, &_cache));
     }
 
-    void Pipeline::bind(VkCommandBuffer buf, VkDescriptorSet desc_set) const {
-		_layout->bind(buf, desc_set, _bind_point);
+	Pipeline::~Pipeline() {
+		if (_pipeline != VK_NULL_HANDLE) {
+			vkDestroyPipeline(_device->logical_device(), _pipeline, nullptr);
+		}
+	}
+
+    void Pipeline::bind(VkCommandBuffer buf, const std::shared_ptr<DescriptorSet>& desc_set) {
+		_layout->bind(buf, desc_set->get(), _bind_point);
         // Bind the rendering pipeline
         // The pipeline (state object) contains all states of the rendering pipeline, binding it will set all the states specified at pipeline creation time
         vkCmdBindPipeline(buf, _bind_point, _pipeline);
+		_desc_set = desc_set;
     }
 
 	void GraphicsPipeline::create(VkDescriptorSetLayout desc_set_layout, std::unique_ptr<Shader> shader_stages, std::unique_ptr<VertexInput> vertex_input) {

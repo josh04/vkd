@@ -24,7 +24,7 @@ namespace vkd {
         };
         
 		MemoryPool(Device& device) : _device(device) {}
-		~MemoryPool() = default;
+		~MemoryPool();
 		MemoryPool(MemoryPool&&) = delete;
 		MemoryPool(const MemoryPool&) = delete;
 

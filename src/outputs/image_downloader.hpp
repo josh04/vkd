@@ -22,6 +22,7 @@ namespace vkd {
         };
 
         void init(const std::shared_ptr<Image>& image, OutFormat ofmt, std::string param_hash_name);
+        void commands(CommandBuffer& buf);
         void commands(VkCommandBuffer buf);
         void execute();
 
@@ -37,6 +38,9 @@ namespace vkd {
         }
 
         void * get_main() const { return _staging_buffer->get(); }
+
+        void allocate(VkCommandBuffer buf);
+        void deallocate();
     private:
         size_t _buffer_size() const;
         OutFormat _ofmt = OutFormat::yuv420p;
@@ -47,6 +51,7 @@ namespace vkd {
 
         std::shared_ptr<AutoMapStagingBuffer> _staging_buffer = nullptr;
         std::shared_ptr<StorageBuffer> _gpu_buffer = nullptr;
+        std::shared_ptr<Image> _image = nullptr;
 
         // yuv420p
         std::shared_ptr<Kernel> _quantise_luma = nullptr;

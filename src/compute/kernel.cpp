@@ -153,11 +153,15 @@ namespace vkd {
         if (_args_changed) {
             auto pool = make_pool();
             _desc_set = std::make_shared<DescriptorSet>(_device, _desc_set_layout, pool);
+            _desc_set->debug_name(_param_hash + " (kernel desc set)");
             for (auto&& arg : _args) {
                 if (arg.second.buffer) {
-                    _desc_set->add_buffer(*arg.second.buffer);
+                    _desc_set->add_buffer(arg.second.buffer);
                 } else if (arg.second.image) {
-                    _desc_set->add_image(*arg.second.image, arg.second.image->sampler());
+                    if (!arg.second.image->allocated()) {
+                        throw ImageException("Image passed to kernel update was not allocated.");
+                    }
+                    _desc_set->add_image(arg.second.image, arg.second.image->sampler());
                 }
             }
             _desc_set->create();
@@ -180,7 +184,7 @@ namespace vkd {
     }
 
     void debug_print(std::string name, int32_t g_x, int32_t g_y, int32_t g_z) {
-        if constexpr (debug) { std::cout << "dispatching " << name << " x: " << g_x << " y: " << g_y << " z: " << g_z
+        if constexpr (debug) { console << "dispatching " << name << " x: " << g_x << " y: " << g_y << " z: " << g_z
             << " offsets x: " << last_offset.x << " offsets y: " << last_offset.y << " z: " << last_offset.z << std::endl; }
     }
 
@@ -192,7 +196,7 @@ namespace vkd {
 	void Kernel::dispatch(VkCommandBuffer buf, int32_t global_x, int32_t global_y, int32_t global_z) {
         _args_changed = true;
         update();
-        _full_pipeline.pipeline->bind(buf, _desc_set->get());
+        _full_pipeline.pipeline->bind(buf, _desc_set);
 
         auto&& local_group_sizes_ = _full_pipeline.local_sizes;
 
@@ -210,7 +214,7 @@ namespace vkd {
 
         for (auto&& param : _params) {
             //if (param.second->changed()) {
-                //std::cout << _shader->path() << ": " << param.second->name() << " size: " << param.second->size() << " offset: " << param.second->offset() << std::endl;
+                //console << _shader->path() << ": " << param.second->name() << " size: " << param.second->size() << " offset: " << param.second->offset() << std::endl;
                 set_push_arg(buf, *param.second);
             //}
         }
@@ -329,7 +333,7 @@ namespace vkd {
             return;
         }
 
-        pipeline->bind(buf, _desc_set->get());
+        pipeline->bind(buf, _desc_set);
         debug_print(_shader->path(), count[0]*local_sizes[0], count[1]*local_sizes[1], count[2]*local_sizes[2]);
         vkCmdDispatch(buf, count[0], count[1], count[2]);
     }

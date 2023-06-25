@@ -40,7 +40,7 @@ namespace vkd {
 
                 //if (Mode() == ApplicationMode::Photo) {
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-                        ui.add_node_graph(item);
+                        ui.add_node_graph_if_not_open(item);
                     }
                 //}
 

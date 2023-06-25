@@ -1,6 +1,14 @@
 #pragma once
 #include <algorithm>
-#include "engine_node.hpp"
+#include <memory>
+#include <map>
+#include <string>
+
+namespace vkd {
+    class ParameterInterface;
+    using ShaderParamMap = std::map<std::string, std::map<std::string, std::shared_ptr<ParameterInterface>>>;
+}
+#include "parameter.hpp"
 
 namespace vkd {
     struct BlockEditParams {

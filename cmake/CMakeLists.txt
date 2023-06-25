@@ -13,6 +13,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+set(CMAKE_POLICY_DEFAULT_CMP0074 NEW)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(CTest)
 
@@ -54,9 +56,22 @@ endif()
 
 find_package(OpenColorIO CONFIG REQUIRED)
 
-set(ZLIB_ROOT ../external/zlib/)
+if(APPLE)
+set(ZLIB_ROOT /usr/local/Cellar/zlib/1.2.13/)
+elseif(WIN32)
+set(ZLIB_ROOT ${CMAKE_SOURCE_DIR}/../external/zlib/)
+endif()
 find_package(ZLIB REQUIRED)
 include_directories(${ZLIB_INCLUDE_DIRS})
+
+if(APPLE)
+set(CMAKE_OSX_SYSROOT /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk)
+set(MATH_LIBRARY /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk/usr/lib/libm.tbd)
+set(CMAKE_DISABLE_FIND_PACKAGE_JPEG TRUE)
+set(JPEG_FOUND TRUE)
+set(ENABLE_LCMS OFF)
+endif()
+
 
 IF(SDL2_FOUND)
   add_library(sdl2 INTERFACE IMPORTED)
@@ -65,6 +80,7 @@ IF(SDL2_FOUND)
 ENDIF(SDL2_FOUND)
 
 if(WIN32)
+
   if (DEBUG)
       install(FILES ../external/SDL2/lib/Debug/SDL2d.dll DESTINATION bin)
       install(FILES ../external/zlib/bin/zlibd.dll DESTINATION bin)
@@ -75,8 +91,8 @@ if(WIN32)
   install(DIRECTORY ../external/ffmpeg-4.4-full_build-shared/bin/ DESTINATION bin)
   install(FILES ../external/ocio/win32/bin/OpenColorIO_2_2.dll DESTINATION bin)
 elseif(APPLE)
-  install(FILES ../external/ocio/mac/lib/libOpenColorIO.2.2.dylib DESTINATION lib)
-  install(FILES LibRaw/libraw.22.dylib LibRaw/libraw.dylib LibRaw/libraw.22.0.0.dylib DESTINATION lib)
+  install(FILES ../external/ocio/mac/lib/libOpenColorIO.2.2.0.dylib DESTINATION lib)
+  install(FILES LibRaw/libraw_r.22.dylib LibRaw/libraw_r.dylib LibRaw/libraw_r.22.0.0.dylib DESTINATION lib)
   install(DIRECTORY ../../train/externals/SDL2.framework DESTINATION lib)
 endif()
 
@@ -93,6 +109,8 @@ endif()
 
 set(ENABLE_RAWSPEED ON CACHE BOOL "" FORCE)
 option(ENABLE_RAWSPEED             "Build library with extra RawSpeed codec support (default=OFF)"                ON)
+set(RAWSPEED_RPATH ../../ CACHE BOOL "" FORCE)
+option(RAWSPEED_RPATH             "Build library with extra RawSpeed codec support (default=OFF)"                ../../)
 
 if (NOT APPLE)
 set(ENABLE_OPENMP ON)
@@ -122,9 +140,21 @@ set(ENABLE_EXCEPTIONS ON)
 add_subdirectory(../external/spirv-reflect ${CMAKE_BINARY_DIR}/spirv-reflect)
 
 set(BUILD_ST ${BUILD_SHARED_LIBS})
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 set(BUILD_SHARED_LIBS OFF)
 set(BUILD_EXTERNAL OFF)
 set(ENABLE_GLSLANG_BINARIES OFF)
+
+enable_language( C CXX ASM )
+set(WITH_JPEG8 ON)
+set(CMAKE_INSTALL_DOCDIR ${CMAKE_BINARY_DIR}/docs)
+set(CMAKE_INSTALL_MANDIR ${CMAKE_BINARY_DIR}/man)
+
+add_subdirectory(../external/libjpeg-turbo ${CMAKE_BINARY_DIR}/libjpeg-turbo)
+
+add_library(JPEG::JPEG ALIAS jpeg-static)
+target_include_directories(jpeg-static PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/libjpeg-turbo> $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/../external/libjpeg-turbo>)
+
 add_subdirectory(../external/glslang ${CMAKE_BINARY_DIR}/glslang)
 add_subdirectory(../external/tinyxml2 ${CMAKE_BINARY_DIR}/tinyxml2)
 add_subdirectory(../external/glm ${CMAKE_BINARY_DIR}/glm)

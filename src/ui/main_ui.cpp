@@ -14,15 +14,25 @@
 
 #include "imgui/imgui_internal.h"
 
-CEREAL_CLASS_VERSION(vkd::MainUI, 2);
+#include "ocio/ocio_static.hpp"
+#include "ocio/ocio_functional.hpp"
+
+#include "host_scheduler.hpp"
+#include "image.hpp"
+#include "services/graph_requests.hpp"
+
+
+CEREAL_CLASS_VERSION(vkd::MainUI, 4);
 
 namespace vkd {
     MainUI::MainUI() : _save_dialog(ImGuiFileBrowserFlags_EnterNewFilename), _export_dialog(ImGuiFileBrowserFlags_EnterNewFilename) {
     	_timeline = std::make_shared<Timeline>();
         _render_window = std::make_unique<RenderWindow>(*_timeline, _performance);
+        _console_window = std::make_unique<ConsoleWindow>();
         _memory_window = std::make_unique<MemoryWindow>();
         _inspector = std::make_unique<Inspector>();
         _bin = std::make_unique<Bin>();
+        _photo_browser = std::make_unique<PhotoBrowser>();
 
         _load_dialog.SetTitle("load graph");
         _load_dialog.SetTypeFilters({ ".bin" });
@@ -32,14 +42,34 @@ namespace vkd {
         _export_dialog.SetTypeFilters({ ".exr", ".png", ".jpg" });
 
         load_preferences();
-        if (!_preferences.last_opened_project().empty()) {
-            load(_preferences.last_opened_project());
+
+        if (Mode() == ApplicationMode::Standard) {
+            if (!_preferences.last_opened_project().empty()) {
+                load(_preferences.last_opened_project());
+            }
         }
+
+        if (Mode() == ApplicationMode::Photo) {
+            if (fs::exists(_preferences.photo_project())) {
+                load(_preferences.photo_project());
+            }
+        }
+
+        _last_saved_prefs = std::chrono::high_resolution_clock::now();
     }
 
     MainUI::~MainUI() = default;
 
     void MainUI::draw() {
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        if (start - _last_saved_prefs > std::chrono::seconds(5)) {
+            save_preferences();
+            _last_saved_prefs = start;
+        }
+
+
         // must run first so no naughty node windows can enqueue things including the existing graph
         if (_execution_to_run) {
             _execute_graph(*_execution_to_run);
@@ -65,11 +95,24 @@ namespace vkd {
                     ImGui::EndMenu();
                 }
                 ImGui::Separator();
-                if(_loaded_path && ImGui::MenuItem("Save")) {
-                    save(*_loaded_path);
+                if (Mode() == ApplicationMode::Standard) {
+                    if (_loaded_path && ImGui::MenuItem("Save")) {
+                        save(*_loaded_path);
+                    }
+
+                    if (ImGui::MenuItem("Save As")) {
+                        _save_dialog.Open();
+                    }
                 }
-                if(ImGui::MenuItem("Save As")) {
-                    _save_dialog.Open();
+
+                if (Mode() == ApplicationMode::Photo) {  
+                    if (ImGui::MenuItem("Save")) {                      
+                        save(_preferences.photo_project());
+                    }
+                }
+                ImGui::Separator();
+                if(ImGui::MenuItem("Preferences")) {
+                    _preferences.open(true);
                 }
                 ImGui::Separator();
                 if(ImGui::MenuItem("Quit")) {
@@ -78,6 +121,9 @@ namespace vkd {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Window")) {
+                if(ImGui::MenuItem("Console")) {
+                    _console_window->open(true);
+                }
                 if(ImGui::MenuItem("Render")) {
                     _render_window->open(true);
                 }
@@ -117,9 +163,13 @@ namespace vkd {
 
         if (Mode() == ApplicationMode::Standard) {
             _timeline->draw(*this, graph_changed);
+            _bin->draw(*this);
         }
 
-        _bin->draw(*this);
+        
+        if (Mode() == ApplicationMode::Photo) {
+            _photo_browser->draw(*this);
+        }
 
         {
             _performance.draw();
@@ -169,13 +219,13 @@ namespace vkd {
             } else if (file.extension() == ".png") {
                 format = ImmediateFormat::PNG;
             }
-            if (_viewer_draw && _viewer_draw->input_node() && _viewer_draw->input_node()->get_output_image()) {
-                _export_name = immediate_exr(_device, file.string(), format, _viewer_draw->input_node()->get_output_image(), _export_task);
+            if (_viewer_draw && _viewer_draw->get_image() && _viewer_draw->get_image()->allocated()) {
+                _export_name = immediate_exr(_device, file.string(), format, _viewer_draw->get_image(), _export_task);
             }
             _export_dialog.ClearSelected();
         }
 
-        if (_export_task && _export_task->GetIsComplete()) {
+        if (_export_task && ts().is_complete(_export_task)) {
             _export_task = nullptr;
             ImGui::OpenPopup("export");
         }
@@ -193,9 +243,11 @@ namespace vkd {
             _execution_to_run = std::optional<ExecutionType>{ExecutionType::Execution};
         }
 
+        _console_window->draw();
+        _preferences.draw();
         _memory_window->draw(*_device);
         if (_viewer_draw && _viewer_draw->input_node() && _viewer_draw->input_node()->get_output_image()) {
-            _inspector->draw(*_device, *_viewer_draw->input_node()->get_output_image(), _viewer_draw->offset_w_h());
+            _inspector->draw(*_device, *_viewer_draw->get_image(), _viewer_draw->offset_w_h());
         }
     }
 
@@ -205,7 +257,7 @@ namespace vkd {
         _render_window = nullptr;
         _timeline = nullptr;
         _bin = nullptr;
-        _execute_graph_flag = false;
+        _photo_browser = nullptr;
         _vulkan_window_open = false;
 
         _preferences.last_opened_project() = "";
@@ -213,6 +265,7 @@ namespace vkd {
     	_timeline = std::make_shared<Timeline>();
         _render_window = std::make_unique<RenderWindow>(*_timeline, _performance);
         _bin = std::make_unique<Bin>();
+        _photo_browser = std::make_unique<PhotoBrowser>();
         
         _current_loaded = "untitled";
 
@@ -235,9 +288,9 @@ namespace vkd {
             ghc::filesystem::path pr(path);
             _current_loaded = pr.filename().string();
         } catch (...) {
-            std::cerr << "failed to load project" << std::endl;
+            console << "failed to load project" << std::endl;
         }
-        std::cout << "loaded project at " << path << std::endl;
+        console << "loaded project at " << path << std::endl;
         
         save_preferences();
     }
@@ -261,9 +314,9 @@ namespace vkd {
             ghc::filesystem::path pr(path);
             _current_loaded = pr.filename().string();
         } catch (...) {
-            std::cerr << "failed to save project" << std::endl;
+            console << "failed to save project" << std::endl;
         }
-        std::cout << "saved project as " << path << std::endl;
+        console << "saved project as " << path << std::endl;
 
         save_preferences();
     }
@@ -275,9 +328,10 @@ namespace vkd {
                 cereal::JSONInputArchive archive(os);
 
                 archive(_preferences);
+                _preferences.loaded();
             }
         } catch (...) {
-            std::cerr << "failed to load preferences" << std::endl;
+            console << "failed to load preferences" << std::endl;
         }
     }
 
@@ -287,8 +341,9 @@ namespace vkd {
             cereal::JSONOutputArchive archive(os);
 
             archive(_preferences);
+            _preferences.saved();
         } catch (...) {
-            std::cerr << "failed to save preferences" << std::endl;
+            console << "failed to save preferences" << std::endl;
         }
     }
 
@@ -298,8 +353,19 @@ namespace vkd {
         add_node_graph(entry);
     }
 
+    void MainUI::add_node_graph_if_not_open(const Bin::Entry& entry) {
+        for (auto&& window : _node_windows) {
+            if (window->name_id() == entry.path) {
+                window->focus();
+                return;
+            }
+        }
+
+        add_node_graph(entry);
+    }
+
     void MainUI::add_node_graph(const Bin::Entry& entry) {
-        _node_windows.emplace_back(std::make_unique<NodeWindow>(_node_window_id));
+        _node_windows.emplace_back(std::make_unique<NodeWindow>(_node_window_id, entry.path));
         _node_window_id++;
 
         if (entry.path != "") {
@@ -315,6 +381,8 @@ namespace vkd {
             if (graph) {
                 _node_windows.back()->sequencer_size_to_loaded_content();
             }
+            
+            _execution_to_run = std::optional<ExecutionType>{ExecutionType::UI};
         }
 
         if (Mode() == ApplicationMode::Standard) {
@@ -333,14 +401,12 @@ namespace vkd {
 
     }
 
-    std::vector<SemaphorePtr> MainUI::semaphores() {
-        std::lock_guard<std::mutex> lock(_submitted_semaphore_mutex);
-        auto ret = std::move(_submitted_semaphores);
-        _submitted_semaphores.clear();
-        return ret;
-    }
-
     void MainUI::update() {
+        
+        if (_stream == nullptr) {
+            _stream = std::make_shared<Stream>(_device);
+            _stream->init();
+        }
         if (_graph != nullptr) {
             if (!_render_window->rendering()) {
                 if (_timeline->play()) {
@@ -348,42 +414,73 @@ namespace vkd {
                 }
 
                 _graph->set_frame(_timeline->current_frame());
-                _execute_graph_flag = _graph->update(ExecutionType::UI) || _timeline->play();
+
+                auto update = _graph->update(ExecutionType::UI, _stream);
+                if (update == Graph::GraphUpdate::Rebake) {
+                    _execution_to_run = std::optional<ExecutionType>{ExecutionType::UI};
+                } else if (update == Graph::GraphUpdate::Updated || _timeline->play()) {
+                    GraphRequests::Get().add_ui_run_with(_viewer_draw);
+                }
             }
+        }
+        if (_viewer_draw) {
+            _viewer_draw->update(ExecutionType::UI);
         }
     }
 
     void MainUI::execute() {
-        if (_graph) {
-            _render_window->execute(*_graph);
+        if (_graph) { 
+            _render_window->execute(*_graph, _stream);
         }
 
-        if (_graph != nullptr && _execute_graph_flag) {
+/*         if (_graph != nullptr && _execute_graph_flag) {
             auto before = std::chrono::high_resolution_clock::now();
-            _graph->execute(ExecutionType::UI);
+            _graph->execute(ExecutionType::UI, _stream, {_viewer_draw});
+
             auto after = std::chrono::high_resolution_clock::now();
-
             auto diff = std::chrono::duration_cast<std::chrono::microseconds>(after - before).count();
-
-            std::lock_guard<std::mutex> lock(_submitted_semaphore_mutex);
-
-            auto sems =  _graph->semaphores();
-            _submitted_semaphores.insert(_submitted_semaphores.end(), sems.begin(), sems.end());
-
+            
             _execute_graph_flag = false;
 
             std::string report = "Graph (" + std::to_string(_graph->graph().size()) + ")";
 
-            std::string extra = std::to_string(sems.size()) + " semaphores";
-            _performance.add(report, diff, extra);
+            _performance.add(report, diff, "stream");
+        } */
+
+        if (_graph != nullptr) {
+            std::optional<GraphRequests::Request> orequest = GraphRequests::Get().take();
+            while (orequest.has_value()) {
+                auto&& request = *orequest;
+                int i = 0;
+                for (auto&& node : request.extra_nodes) {
+                    if (node) {
+                        std::string name = std::string("____extra_") + std::to_string(i);
+                        vkd::engine_node_init(node, name);
+                        node->init();
+                    }
+                    ++i;
+                }
+
+                auto before = std::chrono::high_resolution_clock::now();
+                _graph->execute(request.type, _stream, request.extra_nodes);
+
+                auto after = std::chrono::high_resolution_clock::now();
+                auto diff = std::chrono::duration_cast<std::chrono::microseconds>(after - before).count();
+                
+                std::string report = "R Graph (" + std::to_string(_graph->graph().size()) + ")";
+
+                _performance.add(report, diff, "stream");
+
+                _live_nodes.insert(_live_nodes.end(), request.extra_nodes.begin(), request.extra_nodes.end());
+
+                orequest = GraphRequests::Get().take();
+            }
         }
 
-        if (_viewer_draw && _viewer_draw->range_contains(_timeline->current_frame())) {
-            _viewer_draw->execute(ExecutionType::UI, VK_NULL_HANDLE, VK_NULL_HANDLE);
-        }
     }
 
     void MainUI::_rebuild_draws() {
+        _previous_viewer_draw = _viewer_draw; // can't destroy this until the frame draw has happened which could be whenever
         if (!_graph || _graph->terminals().empty()) {
             _viewer_draw = nullptr;
             return;
@@ -401,10 +498,13 @@ namespace vkd {
         auto cast = std::dynamic_pointer_cast<vkd::ImageNode>(term);
         if (cast != nullptr) {
             _viewer_draw = std::make_shared<vkd::DrawFullscreen>();
+            _viewer_count++; // uh get this into the debug somehow
             _viewer_draw->graph_inputs({term});
             vkd::engine_node_init(_viewer_draw, "____draw");
-            _viewer_draw->init();
+            _viewer_draw->pre_init();
             _viewer_draw->set_range(term->range());
+
+            std::static_pointer_cast<EngineNode>(_viewer_draw)->output_count(1);
         } else {
             _viewer_draw = nullptr;
         }
@@ -417,9 +517,7 @@ namespace vkd {
 
         auto graph_builder = std::make_unique<vkd::GraphBuilder>();
 
-        synchronise_to_host_thread();
-
-        if (_graph) { _graph->flush(); }
+        _stream->flush();
         _graph = nullptr;
         
         for (auto&& node : _node_windows) {
@@ -435,8 +533,8 @@ namespace vkd {
         _graph = graph_builder->bake(_device);
         _rebuild_draws();
 
-        if (_graph && type == ExecutionType::UI) {
-            _execute_graph_flag = true;
+        if (_graph && type == ExecutionType::UI && _viewer_draw) {
+            GraphRequests::Get().add_ui_run_with(_viewer_draw);
         }
 
         auto after = std::chrono::high_resolution_clock::now();

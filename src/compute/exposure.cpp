@@ -13,12 +13,12 @@ namespace vkd {
     REGISTER_NODE("exposure", "exposure", Exposure);
 
     void Exposure::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
         _exposure = std::make_shared<Kernel>(_device, param_hash_name());
-        _exposure->init("shaders/compute/exposure.comp.spv", "main", {16, 16, 1});
+        _exposure->init("shaders/compute/exposure.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_exposure);
 
         auto exp = _exposure->get_param_by_name("exposure");
@@ -32,7 +32,6 @@ namespace vkd {
         gamma->as<float>().max(10.0f);
         //_exposure->set_push_arg_by_name(VK_NULL_HANDLE, "gamma", 1.0f);
 
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -51,10 +50,6 @@ namespace vkd {
         _image->deallocate();
     }
 
-    void Exposure::post_init()
-    {
-    }
-
     bool Exposure::update(ExecutionType type) {
         bool update = false;
 
@@ -69,10 +64,10 @@ namespace vkd {
         return update;
     }
 
-    void Exposure::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _exposure->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Exposure::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _exposure->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
+        stream.submit(command_buffer());
     }
 }

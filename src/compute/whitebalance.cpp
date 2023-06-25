@@ -28,12 +28,12 @@ namespace vkd {
 
 
     void WhiteBalance::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
         _whitebalance = std::make_shared<Kernel>(_device, param_hash_name());
-        _whitebalance->init("shaders/compute/whitebalance.comp.spv", "main", {16, 16, 1});
+        _whitebalance->init("shaders/compute/whitebalance.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_whitebalance);
         
         _wb_param = _whitebalance->get_param_by_name("white_balance");
@@ -43,7 +43,6 @@ namespace vkd {
         _wb_param->tag("sliders");
         _wb_param->tag("vec3");
 
-        _compute_complete = Semaphore::make(_device);
         
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -66,10 +65,6 @@ namespace vkd {
         _image->deallocate();
     }
 
-    void WhiteBalance::post_init()
-    {
-    }
-
     bool WhiteBalance::update(ExecutionType type) {
         bool update = false;
 
@@ -84,11 +79,11 @@ namespace vkd {
         return update;
     }
 
-    void WhiteBalance::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _whitebalance->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
+    void WhiteBalance::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _whitebalance->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
 
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+        stream.submit(command_buffer());
     }
 }

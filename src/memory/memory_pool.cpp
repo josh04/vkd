@@ -6,6 +6,13 @@
 
 namespace vkd {
 
+    MemoryPool::~MemoryPool() {
+        auto allocs = _allocs;
+        for (auto&& entry : allocs) {
+            _destroy(entry.first);
+        }
+    }
+
     VkDeviceMemory MemoryPool::allocate(VkDeviceSize size, VkMemoryPropertyFlags memory_property_flags, uint32_t memory_type_index) {
         int i = 0;
         for (auto&& entry : _pool) {
@@ -39,7 +46,7 @@ namespace vkd {
             _device.memory_manager().add_device_image(size);
         }
 
-        std::cout << "Pool allocating " << size / (1024.0 * 1024.0) << "mb allocation." << std::endl;
+        console << "Pool allocating " << size / (1024.0 * 1024.0) << "mb allocation." << std::endl;
         VK_CHECK_RESULT(vkAllocateMemory(_device.logical_device(), &mem_alloc_info, nullptr, &mem));
         _allocs[mem] = {size, memory_property_flags, memory_type_index};
 
@@ -83,12 +90,12 @@ namespace vkd {
 
         while (current_mem > limit) {
             if (_pool.empty()) {
-                std::cerr << "Warning: Pool emptied without reaching allocation limit." << std::endl;
+                console << "Warning: Pool emptied without reaching allocation limit." << std::endl;
                 return;
             }
             auto rbeg = _pool.back();
             _pool.pop_back();
-            std::cout << "Pool trim deallocating " << rbeg.size / (1024.0 * 1024.0) << "mb allocation." << std::endl;
+            console << "Pool trim deallocating " << rbeg.size / (1024.0 * 1024.0) << "mb allocation." << std::endl;
             _destroy(rbeg.mem);
             current_mem = _device.memory_manager().device_memory_used();
         }

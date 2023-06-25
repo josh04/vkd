@@ -14,6 +14,9 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
+#include "ffmpeg_init.hpp"
+#include "ocio/ocio_functional.hpp"
+
 namespace vkd {
     REGISTER_NODE("ffmpeg_output", "ffmpeg_output", FfmpegOutput);
 
@@ -33,24 +36,11 @@ namespace vkd {
         if (_format_context) {
             avformat_free_context(_format_context);
         }
+        if (_downloader) { _downloader->deallocate(); }
     }
 
     void FfmpegOutput::init() {
-        static std::once_flag initFlag;
-        std::call_once(initFlag, []() {
-            av_register_all();
-            avformat_network_init();
-            av_log_set_callback([](void * ptr, int level, const char* szFmt, va_list varg)
-                { 
-                    if (level < av_log_get_level()) { 
-                        int pre = 1; 
-                        char line[1024]; 
-                        av_log_format_line(ptr, level, szFmt, varg, line, 1024, &pre); 
-                        std::cout << (std::string(line)) << std::endl;; 
-                    }
-                }
-            );
-        });
+        ffmpeg_static_init();
 
         auto image = _buffer_node->get_output_image();
         auto sz = image->dim();
@@ -59,17 +49,10 @@ namespace vkd {
         _height = sz[1];
 
         _downloader = std::make_unique<ImageDownloader>(_device);
-        _downloader->init(_buffer_node->get_output_image(), ImageDownloader::OutFormat::half_rgba, param_hash_name());
+        _downloader->init(_buffer_node->get_output_image(), ImageDownloader::OutFormat::yuv420p, param_hash_name());
         for (auto&& kern : _downloader->kernels()) {
             register_params(*kern);
         }
-
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = Semaphore::make(_device);
-
-        begin_command_buffer(_compute_command_buffer);
-        _downloader->commands(_compute_command_buffer);
-        end_command_buffer(_compute_command_buffer);
 
         // avcodec
 
@@ -100,7 +83,7 @@ namespace vkd {
         
         int err = avcodec_open2(_codec_context, _codec, &_dict);
         if (err < 0) {
-            std::cerr << "avcodec_open2 failed: " << err << std::endl;
+            console << "avcodec_open2 failed: " << err << std::endl;
             throw 0;
         }
 
@@ -127,10 +110,9 @@ namespace vkd {
         }
 
         _fence = Fence::create(_device, false);
-    }
 
-    void FfmpegOutput::post_init()
-    {
+        _ocio = std::make_unique<OcioNode>(OcioNode::Type::Out);
+        _ocio->init(*this, ocio_functional::display_space_index());
     }
 
     bool FfmpegOutput::update(ExecutionType type) {
@@ -144,22 +126,33 @@ namespace vkd {
             }
         }
 
+        if (updated) {
+            _ocio->update(*this, _buffer_node->get_output_image());
+        }
 
         return updated;
     }
 
-    void FfmpegOutput::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void FfmpegOutput::allocate(VkCommandBuffer buf) {
+        _downloader->allocate(buf);
+    }
+
+    void FfmpegOutput::deallocate() {
+        _downloader->deallocate();
+    }
+
+    void FfmpegOutput::execute(ExecutionType type, Stream& stream) {
         if (type != ExecutionType::Execution) {
-            submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
             return;
         }
 
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, _fence.get());
-        
-        if (_fence) {
-            _fence->wait();
-            _fence->reset();        
-        }
+        command_buffer().begin();
+        _ocio->execute(command_buffer(), _width, _height);
+        _downloader->commands(command_buffer());
+        command_buffer().end();
+
+        stream.submit(command_buffer());
+        stream.flush();
 
         uint8_t * buffer = (uint8_t *)_downloader->get_main();
 
@@ -187,7 +180,7 @@ namespace vkd {
 
         int send_err = avcodec_send_frame(_codec_context, frame_pointer);
 		if (send_err != 0) {
-			std::cerr << "avcodec_send_frame error" << std::endl;
+			console << "avcodec_send_frame error" << std::endl;
 		}
         
         int packet_err = 0;
@@ -199,7 +192,7 @@ namespace vkd {
             // write packets here
             if (packet_err == 0)
             {
-                std::cout << "got a packet, size " << packet->size << std::endl;
+                console << "got a packet, size " << packet->size << std::endl;
                 AVRational time_base = _codec_context->time_base;
                         
                 packet->pts = av_rescale_q_rnd(packet->pts, time_base, _video_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
@@ -212,14 +205,13 @@ namespace vkd {
             }
         }
 
-        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
     }
 
     void FfmpegOutput::finish() {
 
         int send_err = avcodec_send_frame(_codec_context, nullptr);
 		if (send_err != 0) {
-			std::cerr << "avcodec_send_frame error" << std::endl;
+			console << "avcodec_send_frame error" << std::endl;
 		}
         
         int packet_err = 0;
@@ -230,7 +222,7 @@ namespace vkd {
             // write packets here
             if (packet_err == 0)
             {
-                std::cout << "got a packet" << std::endl;
+                console << "got a packet" << std::endl;
                 AVRational time_base = _codec_context->time_base;
                         
                 packet->pts = av_rescale_q_rnd(packet->pts, time_base, _video_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));

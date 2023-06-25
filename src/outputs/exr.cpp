@@ -1,5 +1,6 @@
 #include "exr.hpp"
 #include <mutex>
+#include <thread>
 #include "image.hpp"
 #include "command_buffer.hpp"
 #include "buffer.hpp"
@@ -9,6 +10,7 @@
 
 #include "compute/image_node.hpp"
 
+#include "ImfThreading.h"
 #include "ImfRgbaFile.h"
 #include "ghc/filesystem.hpp"
 
@@ -16,6 +18,12 @@ namespace vkd {
     REGISTER_NODE("exr_output", "exr_output", ExrOutput);
 
     ExrOutput::ExrOutput() {
+        
+        static std::once_flag initFlag;
+        std::call_once(initFlag, []() {
+            Imf::setGlobalThreadCount(std::thread::hardware_concurrency());
+        });
+
         _path_param = make_param<ParameterType::p_string>(param_hash_name(), "path", 0);
         _path_param->as<std::string>().set_default("");
         _path_param->tag("filepath");
@@ -39,12 +47,11 @@ namespace vkd {
             register_params(*kern);
         }
 
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = Semaphore::make(_device);
+        
 
-        begin_command_buffer(_compute_command_buffer);
-        _downloader->commands(_compute_command_buffer);
-        end_command_buffer(_compute_command_buffer);
+        command_buffer().begin();
+        _downloader->commands(command_buffer());
+        command_buffer().end();
         
         std::string path = _path_param->as<std::string>().get();
 
@@ -53,10 +60,6 @@ namespace vkd {
         } 
 
         _fence = Fence::create(_device, false);
-    }
-
-    void ExrOutput::post_init()
-    {
     }
 
     bool ExrOutput::update(ExecutionType type) {
@@ -73,19 +76,14 @@ namespace vkd {
         return updated;
     }
 
-    void ExrOutput::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void ExrOutput::execute(ExecutionType type, Stream& stream) {
         if (type != ExecutionType::Execution) {
-            submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
             return;
         }
 
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, _fence.get());
+        stream.submit(command_buffer());
+        stream.flush();
         
-        if (_fence) {
-            _fence->wait();
-            _fence->reset();        
-        }
-
         uint8_t * buffer = (uint8_t *)_downloader->get_main();
 
         //if (pixelBuffer == NULL) {throw Exception("Buffer NULL. Not created or deleted.");}
@@ -95,8 +93,6 @@ namespace vkd {
         file.writePixels(_height);
 
         _frame_count++;
-
-        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
     }
 
     std::string ExrOutput::_filename() const {

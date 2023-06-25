@@ -33,7 +33,11 @@ namespace vkd {
         void deallocate();
 
         void _create(size_t size, VkBufferUsageFlags flags, VkMemoryPropertyFlags mem_prop_flags);
+
+        void debug_name(const std::string& debugName) { _debug_name = debugName; update_debug_name(); }
     protected:
+        void update_debug_name();
+        std::string _debug_name = "Anonymous Buffer";
         std::shared_ptr<Device> _device;
 
         size_t _size = 0;
@@ -45,11 +49,12 @@ namespace vkd {
         VkBufferUsageFlags _buffer_usage_flags = 0;
 
         bool _allocated = false;
-    };
 
+    };
+    
     class StagingBuffer : public Buffer {
     public:
-        StagingBuffer(std::shared_ptr<Device> device) : Buffer(device) {}
+        StagingBuffer(std::shared_ptr<Device> device) : Buffer(device) { _debug_name = "Anonymous Staging Buffer"; }
         ~StagingBuffer() = default;
 
         void create(size_t size, VkBufferUsageFlags extra_flags = 0);
@@ -70,6 +75,7 @@ namespace vkd {
         };
 
         AutoMapStagingBuffer(std::shared_ptr<Device> device, Mode mode, size_t size) : StagingBuffer(device), _mode(mode) {
+            _debug_name = "Anonymous AutoMap Staging Buffer";
             int extra_flags = 0;
             if (_mode == Mode::Upload) {
                 extra_flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -99,16 +105,22 @@ namespace vkd {
 
     class VertexBuffer : public Buffer {
     public:
-        VertexBuffer(std::shared_ptr<Device> device) : Buffer(device) {}
+        VertexBuffer(std::shared_ptr<Device> device) : Buffer(device) {
+            _debug_name = "Anonymous Vertex Buffer";
+        }
+
         ~VertexBuffer() = default;
 
         void create(size_t size);
     private:
 
     };
+
     class IndexBuffer : public Buffer {
     public:
-        IndexBuffer(std::shared_ptr<Device> device) : Buffer(device) {}
+        IndexBuffer(std::shared_ptr<Device> device) : Buffer(device) {
+            _debug_name = "Anonymous Index Buffer";
+        }
         ~IndexBuffer() = default;
 
         void create(size_t size);
@@ -117,7 +129,9 @@ namespace vkd {
     };
     class UniformBuffer : public StagingBuffer {
     public:
-        UniformBuffer(std::shared_ptr<Device> device) : StagingBuffer(device) {}
+        UniformBuffer(std::shared_ptr<Device> device) : StagingBuffer(device) {
+            _debug_name = "Anonymous Uniform Buffer";
+        }
         ~UniformBuffer() = default;
 
         void create(size_t size);
@@ -126,7 +140,9 @@ namespace vkd {
     };
     class StorageBuffer : public StagingBuffer {
     public:
-        StorageBuffer(std::shared_ptr<Device> device) : StagingBuffer(device) {}
+        StorageBuffer(std::shared_ptr<Device> device) : StagingBuffer(device) {
+            _debug_name = "Anonymous Storage Buffer";
+        }
         ~StorageBuffer() = default;
 
         static auto make(const std::shared_ptr<Device>& device, size_t size) {

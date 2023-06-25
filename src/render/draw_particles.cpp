@@ -60,7 +60,7 @@ namespace vkd {
     }
 
     void DrawParticles::init() {
-        _particle_sampler = create_sampler(_device->logical_device());
+        _particle_sampler = ScopedSampler::make(_device);
         _particle_image_1 = load_ktx(_device, "textures/particle01_rgba.ktx", VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         _particle_image_2 = load_ktx(_device, "textures/particle_gradient_rgba.ktx", VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
        
@@ -74,8 +74,8 @@ namespace vkd {
         _particle_desc_layout->create();
 
         _particle_desc_set = std::make_shared<DescriptorSet>(_device, _particle_desc_layout, _desc_pool);
-        _particle_desc_set->add_image(*_particle_image_1, _particle_sampler);
-        _particle_desc_set->add_image(*_particle_image_2, _particle_sampler);
+        _particle_desc_set->add_image(_particle_image_1, _particle_sampler);
+        _particle_desc_set->add_image(_particle_image_2, _particle_sampler);
         _particle_desc_set->create();
 
         _particle_pipeline = std::make_shared<ParticlePipeline>(_device, _pipeline_cache, _renderpass);
@@ -96,13 +96,9 @@ namespace vkd {
         _particle_pipeline->create(pl, std::move(shader_stages), std::move(vertex_input));
     }
 
-    void DrawParticles::post_init()
-    {
-    }
-
     void DrawParticles::commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {
         viewport_and_scissor(buf, width, height, width, height);
-        _particle_pipeline->bind(buf, _particle_desc_set->get());
+        _particle_pipeline->bind(buf, _particle_desc_set);
 
 		glm::vec2 screendim = glm::vec2((float)width, (float)height);
         vkCmdPushConstants(buf, _particle_pipeline->layout()->get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &screendim);
@@ -114,7 +110,7 @@ namespace vkd {
         vkCmdDraw(buf, PARTICLE_COUNT, 1, 0, 0);
     }
 
-    void DrawParticles::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void DrawParticles::execute(ExecutionType type, Stream& stream) {
 
     }
 }

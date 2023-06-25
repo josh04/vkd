@@ -14,37 +14,37 @@ namespace vkd {
         MemoryManager(const MemoryManager&) = delete;
 
         void add_device_buffer(int64_t sz) {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             _c.device_buffer_memory += sz;
             _c.device_buffer_count++;
         }
 
         void remove_device_buffer(int64_t sz) {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             _c.device_buffer_memory -= sz;
             _c.device_buffer_count--;
         }
 
         void add_device_image(int64_t sz) {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             _c.device_image_memory += sz;
             _c.device_image_count++;
         }
 
         void remove_device_image(int64_t sz) {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             _c.device_image_memory -= sz;
             _c.device_image_count--;
         }
 
         void add_host_buffer(int64_t sz) {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             _c.host_buffer_memory += sz;
             _c.host_buffer_count++;
         }
 
         void remove_host_buffer(int64_t sz) {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             _c.host_buffer_memory -= sz;
             _c.host_buffer_count--;
         }
@@ -59,12 +59,12 @@ namespace vkd {
         };
 
         Counters get_report() const {
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             return _c;
         }
 
         int64_t device_memory_used() const { 
-            std::lock_guard<std::mutex> lock(_counter_mutex);
+            std::scoped_lock lock(_counter_mutex);
             return _c.device_buffer_memory + _c.device_image_memory;
         }
     private:

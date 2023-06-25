@@ -5,6 +5,7 @@
 
 #include "buffer.hpp"
 #include "command_buffer.hpp"
+#include "sampler.hpp"
 
 typedef void* ImTextureID;
 extern ImTextureID ImGui_ImplVulkan_AddTexture(VkSampler sampler, VkImageView image_view, VkImageLayout image_layout);
@@ -57,6 +58,9 @@ namespace vkd {
             loc.y = std::clamp(loc.y, 0, _height - 1);
     
             auto buf2 = vkd::begin_immediate_command_buffer(_device->logical_device(), _device->command_pool());
+
+            set_layout(buf2, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
             AutoMapStagingBuffer buf{_device, AutoMapStagingBuffer::Mode::Download, sizeof(T)};
             buf.barrier(buf2, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
@@ -64,6 +68,7 @@ namespace vkd {
         
             buf.barrier(buf2, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+            set_layout(buf2, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf2);
 
             return *reinterpret_cast<T*>(buf.get());
@@ -85,17 +90,23 @@ namespace vkd {
         auto image() const { return _image;}
         auto view() const { return _view; }
         auto layout() const { return _layout; }
-        auto sampler() const { return _sampler; }
+        const auto& sampler() const { return _sampler; }
 
         glm::ivec2 dim() const { return {_width, _height}; }
 
         auto ui_desc_set() { 
             if (_ui_desc_set == VK_NULL_HANDLE) {
-                _ui_desc_set = (VkDescriptorSet)ImGui_ImplVulkan_AddTexture(_sampler, _view, _layout);
+                _ui_desc_set = (VkDescriptorSet)ImGui_ImplVulkan_AddTexture(_sampler->get(), _view, _layout);
+                update_debug_name();
             }
             return _ui_desc_set; 
         }
+        const auto& device() const { return _device; }
+
+        void debug_name(const std::string& debugName) { _debug_name = debugName; update_debug_name(); }
     protected:
+        void update_debug_name();
+
         static void insert_image_memory_barrier(
             VkCommandBuffer buf,
             VkImageMemoryBarrier image_memory_barrier,
@@ -119,13 +130,14 @@ namespace vkd {
 
         size_t _allocated_size = 0;
 
-        VkSampler _sampler = VK_NULL_HANDLE;
+        ScopedSamplerPtr _sampler = nullptr;
 
         VkDescriptorSet _ui_desc_set = VK_NULL_HANDLE;
 
         const bool _no_dealloc = false;
 
         bool _allocated = false;
+        std::string _debug_name = "Anonymous Image";
     };
 
     class StagingImage : public Image {

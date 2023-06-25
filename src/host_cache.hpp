@@ -9,6 +9,8 @@
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
 
+#include "hash.hpp"
+
 namespace vkd {
 
     class StaticHostImage {
@@ -42,13 +44,13 @@ namespace vkd {
         HostCache(HostCache&&) = delete;
         HostCache(const HostCache&) = delete;
 
-        bool add(const std::string& name, std::unique_ptr<StaticHostImage> image);
-        bool remove(const std::string& name);
-        StaticHostImage * get(const std::string& name);
+        bool add(const Hash& name, std::unique_ptr<StaticHostImage> image);
+        bool remove(const Hash& name);
+        StaticHostImage * get(const Hash& name);
         void trim();
 
     private:
-        std::map<std::string, std::unique_ptr<StaticHostImage>> _cache;
-        std::deque<std::string> _least_recent_used;
+        std::map<Hash, std::unique_ptr<StaticHostImage>> _cache;
+        std::deque<Hash> _least_recent_used;
     };
 }

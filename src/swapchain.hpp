@@ -12,7 +12,7 @@ namespace vkd {
         swapchain(std::shared_ptr<Instance> instance, 
                   std::shared_ptr<Device> device,
                   std::shared_ptr<Surface> surface);
-        ~swapchain() = default;
+        ~swapchain();
 
         void create(uint32_t& width, uint32_t& height, bool vsync);
 

@@ -98,6 +98,49 @@
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 }
+            ],
+            "environment": [{"name": "SANE_CONFIG_DIR ", "value": "c:/code/sane-backends/build/etc/sane.d/"}]
+        },
+        {
+            "name": "photo (win) (gdb)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-photo.exe",
+            "args": [],
+            "MIMode": "gdb",
+            "miDebuggerPath": "e:/code/msys64/usr/bin/gdb.exe",
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin/",
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "environment": [{"name": "SANE_CONFIG_DIR ", "value": "c:/code/sane-backends/build/etc/sane.d/"}]
+        },
+        {
+            "name": "tests (win)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake/bundle/release/bin/vkd-test.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/cmake/bundle/release/bin/",
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
             ]
         },
         {

@@ -9,8 +9,7 @@ namespace vkd {
     ColourSquares::ColourSquares(int32_t width, int32_t height) : _width(width), _height(height) {}
 
     void ColourSquares::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = Semaphore::make(_device);
+        
         
         _image = std::make_shared<vkd::Image>(_device);
         _image->create_image(VK_FORMAT_R32G32B32A32_SFLOAT, {_width, _height}, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
@@ -24,7 +23,7 @@ namespace vkd {
         vkd::flush_command_buffer(_device->logical_device(), _device->queue(), _device->command_pool(), buf);
 
         _square = std::make_shared<Kernel>(_device, param_hash_name());
-        _square->init("shaders/compute/square.comp.spv", "main", {16, 16, 1});
+        _square->init("shaders/compute/square.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_square);
         _square->set_arg(0, _image);
 
@@ -34,11 +33,7 @@ namespace vkd {
         };
         SquareData d1;
         d1.col = glm::vec4{0.706f, 0.678f, 0.639f, 1.0f};
-        _square->set_push_arg_by_name(_compute_command_buffer, "col", d1.col);
-    }
-
-    void ColourSquares::post_init()
-    {
+        _square->set_push_arg_by_name(command_buffer().get(), "col", d1.col);
     }
 
     bool ColourSquares::update(ExecutionType type) {
@@ -52,22 +47,22 @@ namespace vkd {
         }
 
         if (update) {
-            begin_command_buffer(_compute_command_buffer);
+            command_buffer().begin();
             glm::ivec4 rect = {10, 10, 40, 40};
             glm::ivec4 rect2 = {10, 50, 160, 160};
 
             _square->set_offset({rect.x, rect.y});
-            _square->dispatch(_compute_command_buffer, rect.z, rect.w);
+            _square->dispatch(command_buffer(), rect.z, rect.w);
             
             _square->set_offset({rect2.x, rect2.y});
-            _square->dispatch(_compute_command_buffer, rect2.z, rect2.w);
+            _square->dispatch(command_buffer(), rect2.z, rect2.w);
 
-            end_command_buffer(_compute_command_buffer);
+            command_buffer().end();
         }
         return update;
     }
 
-    void ColourSquares::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void ColourSquares::execute(ExecutionType type, Stream& stream) {
+        stream.submit(command_buffer());
     }
 }

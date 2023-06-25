@@ -6,6 +6,12 @@
 
 namespace vkd {
 
+    Renderpass::~Renderpass() {
+        if (_renderpass) {
+            vkDestroyRenderPass(_device->logical_device(), _renderpass, nullptr);
+        }
+    }
+
     void Renderpass::create(const VkFormat colour_format, const VkFormat& depth_format) {
         std::array<VkAttachmentDescription, 2> attachments = {};
         // Color attachment

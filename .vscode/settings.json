@@ -113,6 +113,14 @@
         "filesystem": "cpp",
         "any": "cpp",
         "cfenv": "cpp",
-        "scoped_allocator": "cpp"
+        "scoped_allocator": "cpp",
+        "__bits": "cpp",
+        "__std_stream": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "*.inc": "cpp",
+        "coroutine": "cpp",
+        "resumable": "cpp",
+        "span": "cpp"
     }
 }

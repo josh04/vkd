@@ -23,7 +23,7 @@ namespace vkd {
 
     void Sand::init() {
 
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
         
         /// START RESOURCE ACQ
 
@@ -68,7 +68,7 @@ namespace vkd {
 
         /// END RESOURCE ACQ
         _sand_clear = std::make_shared<Kernel>(_device, param_hash_name());
-        _sand_clear->init("shaders/compute/sand_clear.comp.spv", "main", {16, 16, 1});
+        _sand_clear->init("shaders/compute/sand_clear.comp.spv", "main", Kernel::default_local_sizes);
         _sand_clear->set_arg(0, _sand_locations);
 
         _sand_add_bumpers = std::make_shared<Kernel>(_device, param_hash_name());
@@ -82,23 +82,23 @@ namespace vkd {
         _sand_bottom_bump->set_arg(2, _sand_locations_sc);
 
         _sand_process = std::make_shared<Kernel>(_device, param_hash_name());
-        _sand_process->init("shaders/compute/sand_process.comp.spv", "main", {16, 16, 1});
+        _sand_process->init("shaders/compute/sand_process.comp.spv", "main", Kernel::default_local_sizes);
         _sand_process->set_arg(0, _sand_locations);
         _sand_process->set_arg(1, _sand_locations_sc);
         _sand_process->set_arg(2, _sand_locations_scratch);
         
         _sand_copy_stills = std::make_shared<Kernel>(_device, param_hash_name());
-        _sand_copy_stills->init("shaders/compute/sand_copy_stills.comp.spv", "main", {16, 16, 1});
+        _sand_copy_stills->init("shaders/compute/sand_copy_stills.comp.spv", "main", Kernel::default_local_sizes);
         _sand_copy_stills->set_arg(0, _sand_locations);
         _sand_copy_stills->set_arg(1, _sand_locations_scratch);
 
         _sand_add = std::make_shared<Kernel>(_device, param_hash_name());
-        _sand_add->init("shaders/compute/sand_add.comp.spv", "main", {16, 16, 1});
+        _sand_add->init("shaders/compute/sand_add.comp.spv", "main", Kernel::default_local_sizes);
         _sand_add->set_arg(0, _sand_add_locations);
         _sand_add->set_arg(1, _sand_locations_scratch);
 
         _sand_to_image = std::make_shared<Kernel>(_device, param_hash_name());
-        _sand_to_image->init("shaders/compute/sand_to_image.comp.spv", "main", {16, 16, 1});
+        _sand_to_image->init("shaders/compute/sand_to_image.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_sand_to_image);
         _sand_to_image->set_arg(0, _sand_locations_scratch);
         _sand_to_image->set_arg(1, _sand_image);
@@ -111,12 +111,6 @@ namespace vkd {
         vkd::flush_command_buffer(_device->logical_device(), _device->compute_queue(), _device->command_pool(), buf2);
 
         _sand_clear->set_arg(0, _sand_locations_scratch);
-
-        _compute_complete = Semaphore::make(_device);
-    }
-
-    void Sand::post_init()
-    {
     }
 
     bool Sand::update(ExecutionType type) {
@@ -125,7 +119,7 @@ namespace vkd {
             if (i % (_width/5) == 0) {
                 int off = std::max(std::min(i + dist2(engine), (int)_width), 0);
                 _add_loc_map[off] = 1;
-                //std::cout << "rand: " << off << std::endl;
+                //console << "rand: " << off << std::endl;
             }
         }
         
@@ -139,50 +133,50 @@ namespace vkd {
         }
 
         if (update) {
-            begin_command_buffer(_compute_command_buffer);
+            command_buffer().begin();
             
-            _sand_clear->dispatch(_compute_command_buffer, _width, _height);
+            _sand_clear->dispatch(command_buffer(), _width, _height);
 
             glm::ivec2 offs = {0, _height - 1};
             _sand_bottom_bump->set_offset(offs);
 
-            _sand_bottom_bump->dispatch(_compute_command_buffer, _width, 1);
+            _sand_bottom_bump->dispatch(command_buffer(), _width, 1);
 
             _ubo.wobble = 0;
-            _sand_process->set_push_arg_by_name(_compute_command_buffer, "_wobble", _ubo.wobble);
-            _sand_process->dispatch(_compute_command_buffer, _width, _height-1);
-            _sand_locations->copy(*_sand_locations_sc, _compute_command_buffer);
+            _sand_process->set_push_arg_by_name(command_buffer().get(), "_wobble", _ubo.wobble);
+            _sand_process->dispatch(command_buffer(), _width, _height-1);
+            _sand_locations->copy(*_sand_locations_sc, command_buffer().get());
             
             _ubo.wobble = -1;
-            _sand_process->set_push_arg_by_name(_compute_command_buffer, "_wobble", _ubo.wobble);
-            _sand_process->dispatch(_compute_command_buffer, _width, _height-1);
-            _sand_locations->copy(*_sand_locations_sc, _compute_command_buffer);
+            _sand_process->set_push_arg_by_name(command_buffer().get(), "_wobble", _ubo.wobble);
+            _sand_process->dispatch(command_buffer(), _width, _height-1);
+            _sand_locations->copy(*_sand_locations_sc, command_buffer().get());
 
             _ubo.wobble = 1;
-            _sand_process->set_push_arg_by_name(_compute_command_buffer, "_wobble", _ubo.wobble);
-            _sand_process->dispatch(_compute_command_buffer, _width, _height-1);
-            _sand_locations->copy(*_sand_locations_sc, _compute_command_buffer);
+            _sand_process->set_push_arg_by_name(command_buffer().get(), "_wobble", _ubo.wobble);
+            _sand_process->dispatch(command_buffer(), _width, _height-1);
+            _sand_locations->copy(*_sand_locations_sc, command_buffer().get());
 
-            _sand_copy_stills->dispatch(_compute_command_buffer, _width, _height-1);
+            _sand_copy_stills->dispatch(command_buffer(), _width, _height-1);
 
-            _sand_add_locations->copy(*_add_loc_stage, _sand_add_locations->requested_size(), _compute_command_buffer);
-            _sand_add_locations->barrier(_compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            _sand_add_locations->copy(*_add_loc_stage, _sand_add_locations->requested_size(), command_buffer().get());
+            _sand_add_locations->barrier(command_buffer().get(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             
-            _sand_add->dispatch(_compute_command_buffer, _width, 1);
-            _sand_to_image->dispatch(_compute_command_buffer, _width, _height);
+            _sand_add->dispatch(command_buffer(), _width, 1);
+            _sand_to_image->dispatch(command_buffer(), _width, _height);
 
-            _sand_locations->copy(*_sand_locations_scratch, _compute_command_buffer);
-            _sand_locations_scratch->barrier(_compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-            _sand_locations->barrier(_compute_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            _sand_locations->copy(*_sand_locations_scratch, command_buffer().get());
+            _sand_locations_scratch->barrier(command_buffer().get(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            _sand_locations->barrier(command_buffer().get(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-            end_command_buffer(_compute_command_buffer);
+            command_buffer().end();
 
         }
 
         return update;
     }
 
-    void Sand::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Sand::execute(ExecutionType type, Stream& stream) {
+        stream.submit(command_buffer());
     }
 }

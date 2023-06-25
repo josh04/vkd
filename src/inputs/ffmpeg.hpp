@@ -22,6 +22,7 @@ namespace vkd {
     class StagingBuffer;
     class StorageBuffer;
     struct Frame;
+    class OcioNode;
 
     class Ffmpeg : public EngineNode, public ImageNode {
     public:
@@ -43,15 +44,18 @@ namespace vkd {
         void post_setup() override;
 
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
-        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
-        auto compute_complete() const { return _compute_complete; }
+        void allocate(VkCommandBuffer buf) override;
+        void deallocate() override;
+        
         std::shared_ptr<Image> get_output_image() const override { return _uploader ? _uploader->get_gpu() : nullptr;; }
         float get_output_ratio() const override { return _width / (float)_height; }
+
+        std::optional<BlockEditParams> block_edit_params() const override { return _block; }
     private:
         //std::string _path = "test.mp4";
 
@@ -59,8 +63,7 @@ namespace vkd {
 
         std::unique_ptr<ImageUploader> _uploader = nullptr;
 
-        VkCommandBuffer _compute_command_buffer;
-        SemaphorePtr _compute_complete;
+        
 
         AVFormatContext * _format_context = nullptr;
         bool _decode_next_frame = true;
@@ -81,9 +84,9 @@ namespace vkd {
         bool _force_scrub = true;
         int64_t _current_frame = -1;
 
-        Fence * _last_fence = nullptr;
-
         size_t _buffer_size = 0;
         bool _blanked = false;
+
+        std::unique_ptr<OcioNode> _ocio = nullptr;
     };
 }

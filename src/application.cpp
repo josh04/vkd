@@ -49,7 +49,7 @@ namespace vkd {
 
         auto sys = sdl2::make_sdlsystem(SDL_INIT_VIDEO);
         if (!sys) {
-            std::cerr << "Error creating SDL2 system: " << SDL_GetError() << std::endl;
+            console << "Error creating SDL2 system: " << SDL_GetError() << std::endl;
             return 1;
         }
 
@@ -74,7 +74,7 @@ namespace vkd {
 
         auto win = sdl2::make_window("Demo", x, y, width_sm, height_sm, SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN | winflag);
         if (!win) {
-            std::cerr << "Error creating window: " << SDL_GetError() << std::endl;
+            console << "Error creating window: " << SDL_GetError() << std::endl;
             return 1;
         }
         
@@ -94,7 +94,7 @@ namespace vkd {
 
         auto glContext = SDL_GL_CreateContext(win.get());
         if (!glContext) {
-            std::cerr << "Error creating gl context: " << SDL_GetError() << std::endl;
+            console << "Error creating gl context: " << SDL_GetError() << std::endl;
             return 1;
         }
 
@@ -102,12 +102,12 @@ namespace vkd {
 
 
         if (gl3wInit()) {
-            std::cerr << "gl3w failed to initialize OpenGL" << std::endl;
+            console << "gl3w failed to initialize OpenGL" << std::endl;
             return -1;
         }
 
         if (!gl3wIsSupported(major_version, minor_version)) {
-            std::cerr << "gl3w context was not OpenGL " << major_version << "." << minor_version << std::endl;
+            console << "gl3w context was not OpenGL " << major_version << "." << minor_version << std::endl;
             return -1;
         }
         
@@ -117,7 +117,7 @@ namespace vkd {
         try {
             vkd::init(win.get(), renderer.get());
         } catch (std::runtime_error& e) {
-            std::cout << e.what() << std::endl;
+            console << e.what() << std::endl;
             return 0;
         }
         ::ui->resize(width_sm, height_sm, width_sm, height_sm);

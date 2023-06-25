@@ -92,18 +92,63 @@ namespace vkd {
 		}
 	}
 
+	void submit_compute_buffer_timeline(VkQueue queue, VkCommandBuffer buf, VkPipelineStageFlags wait_stage_mask, TimelineSemaphore& semaphore) {
+		VkSubmitInfo submit_info = {};
+
+		auto sem = semaphore.get();
+        uint64_t signal_value = semaphore.increment();
+		uint64_t wait_value = signal_value - 1;
+
+		VkTimelineSemaphoreSubmitInfo timeline_info;
+		timeline_info.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+		timeline_info.pNext = NULL;
+		timeline_info.waitSemaphoreValueCount = 1;
+		timeline_info.pWaitSemaphoreValues = &wait_value;
+		timeline_info.signalSemaphoreValueCount = 1;
+		timeline_info.pSignalSemaphoreValues = &signal_value;
+
+		submit_info.pNext = &timeline_info;
+		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submit_info.commandBufferCount = (buf != VK_NULL_HANDLE) ? 1 : 0;
+		submit_info.pCommandBuffers = (buf != VK_NULL_HANDLE) ? &buf : VK_NULL_HANDLE;
+		submit_info.waitSemaphoreCount = 1;
+		submit_info.pWaitSemaphores = &sem;
+		submit_info.pWaitDstStageMask = &wait_stage_mask;
+		submit_info.signalSemaphoreCount = 1;
+		submit_info.pSignalSemaphores = &sem;
+
+		auto res = vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+		if (res == VK_NOT_READY) {
+			return; // gpu device waiting
+		} else if (res < 0) {
+			VK_CHECK_RESULT(res);
+		}
+	}
+
+
 	void submit_compute_buffer(Device& device, VkCommandBuffer buf, VkSemaphore wait, VkSemaphore signal, const Fence * fence) {
-		std::lock_guard<std::mutex> lock(device.queue_mutex());
+		std::scoped_lock lock(device.queue_mutex());
 		submit_command_buffer(device.compute_queue(), buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, wait, signal, fence);
 	}
 
 	void submit_compute_buffer(Device& device, VkCommandBuffer buf, std::nullptr_t, std::nullptr_t, const Fence * fence) {
-		std::lock_guard<std::mutex> lock(device.queue_mutex());
+		std::scoped_lock lock(device.queue_mutex());
 		submit_command_buffer(device.compute_queue(), buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_NULL_HANDLE, VK_NULL_HANDLE, fence);
 	}
 
 	void submit_compute_buffer(Device& device, VkCommandBuffer buf, const SemaphorePtr& wait, const SemaphorePtr& signal, const Fence * fence) {
+		std::scoped_lock lock(device.queue_mutex());
 		submit_compute_buffer(device, buf, wait ? wait->get() : VK_NULL_HANDLE, signal->get(), fence);
+	}
+
+	void submit_compute_buffer_timeline(Device& device, VkCommandBuffer buf, TimelineSemaphore& semaphore) {
+		std::scoped_lock lock(device.queue_mutex());
+		submit_compute_buffer_timeline(device.compute_queue(), buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, semaphore);
+	}
+
+	void submit_compute_buffer_timeline(Device& device, VkCommandBuffer buf, TimelineSemaphorePtr& semaphore) {
+		std::scoped_lock lock(device.queue_mutex());
+		submit_compute_buffer_timeline(device.compute_queue(), buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, *semaphore);
 	}
 
 	
@@ -157,4 +202,19 @@ namespace vkd {
 		submit_compute_buffer(*_device, _buf, wait, _last_submitted_signal, fence);
 	}
 
+	void CommandBuffer::submit_timeline(TimelineSemaphorePtr& signal) {
+		submit_timeline(*signal);
+	}
+
+	void CommandBuffer::submit_timeline(TimelineSemaphore& signal) {
+		_flush_on_destruct = false;
+		submit_compute_buffer_timeline(*_device, _buf, signal);
+	}
+
+    void CommandBuffer::update_debug_name() {
+        if (_buf != VK_NULL_HANDLE)
+        {
+            _device->set_debug_utils_object_name(_debug_name, VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)_buf);
+        }
+    }
 }

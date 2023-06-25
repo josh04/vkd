@@ -41,7 +41,7 @@ namespace vkd {
 
     void Fence::wait() const {
         if (_state == State::Waited) {
-            std::cout << "Warning: double fence wait" << std::endl;
+            //console << "Warning: double fence wait" << std::endl;
             return;
         } else if (_state != State::Submitted) {
             throw std::runtime_error("Attempting to wait on fence that has not been submitted.");
@@ -54,10 +54,10 @@ namespace vkd {
             if (res == VK_SUCCESS) {
                 break;
             }
-            std::cout << "Slow: Timeout waiting on Fence (" << wait_time * (i + 1) << ")." << std::endl;
+            console << "Slow: Timeout waiting on Fence (" << wait_time * (i + 1) << ")." << std::endl;
         }
         if (res == VK_TIMEOUT) {
-            std::cout << "Slow: Fence wait failed after 10s, issues likely inbound." << std::endl;
+            console << "Slow: Fence wait failed after 10s, issues likely inbound." << std::endl;
         }
         _state = State::Waited;
     }

@@ -18,6 +18,7 @@ namespace vkd {
     class StagingBuffer;
     class StorageBuffer;
     struct Frame;
+    class OcioNode;
 
     class Exr : public EngineNode, public ImageNode {
     public:
@@ -37,20 +38,22 @@ namespace vkd {
         void post_setup() override;
 
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
-        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
-        auto compute_complete() const { return _compute_complete; }
+        
         std::shared_ptr<Image> get_output_image() const override { return _uploader ? _uploader->get_gpu() : nullptr; }
         float get_output_ratio() const override { return _width / (float)_height; }
+        
+        void allocate(VkCommandBuffer buf) override;
+        void deallocate() override;
+
     private:
         int32_t _width = 1, _height = 1;
         
-        VkCommandBuffer _compute_command_buffer;
-        SemaphorePtr _compute_complete;
+        
 
         bool _decode_next_frame = true;
         std::shared_ptr<ParameterInterface> _single_frame = nullptr;
@@ -67,8 +70,7 @@ namespace vkd {
 
         int64_t _current_frame = -1;
 
-        Fence * _last_fence = nullptr;
-
         bool _blanked = false;
+        std::unique_ptr<OcioNode> _ocio = nullptr;
     };
 }

@@ -161,9 +161,8 @@ imguiDrawer::imguiDrawer(unsigned int width, unsigned int height, bool vulkan) :
 */ // removed imgui 1.80
     // Alternatively you can set this to NULL and call ImGui::GetDrawData() after ImGui::Render() to get the same ImDrawData pointer.
 
-    /*io.SetClipboardTextFn = ImGui_ImplGlfwGL3_SetClipboardText;
-     io.GetClipboardTextFn = ImGui_ImplGlfwGL3_GetClipboardText;*/
-
+    io.GetClipboardTextFn = [](void *) { return (const char *)SDL_GetClipboardText(); };
+    io.SetClipboardTextFn = [](void *, const char *text) { SDL_SetClipboardText(text); };
      //auto path = load_image::get_path("cabin-bold.ttf");
      //ImFont * font = io.Fonts->AddFontFromFileTTF(path.c_str(), 24.0f);
 }
@@ -222,7 +221,7 @@ void imguiDrawer::preRender() {
     // Setup time step
     //azure::TimePoint current_time = azure::Clock::now();
     //io.DeltaTime = g_Time > azure::TimePoint::min() ? (float)(current_time - g_Time).count() * 1e-9 : (float)(1.0f / 60.0f);
-    //std::cout << io.DeltaTime << std::endl;
+    //console << io.DeltaTime << std::endl;
     //g_Time = current_time;
 
     // Setup inputs

@@ -42,8 +42,12 @@
 
 #include "glm/glm.hpp"
 
+#include "host_scheduler.hpp"
+
 #include <chrono>
 #include <random>
+
+#include "inputs/sane/sane_service.hpp"
 
 namespace vkd {
 
@@ -56,7 +60,6 @@ namespace vkd {
         std::shared_ptr<Device> _device;
         VkFormat _depth_format, _colour_format;
         std::vector<VkCommandBuffer> _command_buffers;
-        VkFence _fence;
 
         std::unique_ptr<swapchain> _swapchain = nullptr;
         std::shared_ptr<Surface> _surface = nullptr;
@@ -76,21 +79,26 @@ namespace vkd {
 
         uint32_t _width = 0;
         uint32_t _height = 0;
-        std::unique_ptr<enki::TaskScheduler> _task_scheduler = nullptr;
+        std::unique_ptr<HostScheduler> _task_scheduler = nullptr;
 
-        std::vector<FencePtr> callback_fences;
-        FencePtr sync_fence = nullptr;
     }
 
-    enki::TaskScheduler& ts() { return *_task_scheduler; }
+    HostScheduler& ts() { return *_task_scheduler; }
 
     void shutdown() {
 
+        sane::Service::Shutdown();
+
         vkDeviceWaitIdle(_device->logical_device());
+
+        vkDestroySemaphore(_device->logical_device(), _present_complete, nullptr);
+        vkDestroySemaphore(_device->logical_device(), _render_complete, nullptr);
 
 	    _ui = nullptr;
 
         _draw_ui = nullptr;
+
+        _task_scheduler->cleanup();
 
         _pipeline_cache = nullptr;
         _renderpass = nullptr;
@@ -101,7 +109,6 @@ namespace vkd {
         //std::vector<VkFence> _command_buffer_complete;
 
         _command_buffer_complete.clear();
-        sync_fence = nullptr;
 
         _swapchain = nullptr;
         _surface = nullptr;
@@ -115,34 +122,21 @@ namespace vkd {
         _instance = nullptr;
 
         _task_scheduler = nullptr;
-        callback_fences.clear();
     }
 
 	Device& device() { return *_device; }
 	DrawUI& get_ui() { return *_draw_ui; }
 
     std::shared_ptr<Instance> createInstance(bool enableValidation) {
-        
         auto instance = std::make_shared<Instance>();
         instance->init(enableValidation);
-
-        // If requested, we enable the default validation layers for debugging
-        if (_enableValidation)
-        {
-            // The report flags determine what type of messages for the layers will be displayed
-            // For validating (debugging) an application the error and warning bits should suffice
-            VkDebugReportFlagsEXT debugReportFlags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-            // Additional flags include performance info, loader and layer debug messages, etc.
-            //vks::debug::setupDebugging(instance, debugReportFlags, VK_NULL_HANDLE);
-        }
-
         return instance;
     }
 
     void init(SDL_Window * window, SDL_Renderer * renderer) {
         
-        _task_scheduler = std::make_unique<enki::TaskScheduler>();
-        _task_scheduler->Initialize();
+        _task_scheduler = std::make_unique<HostScheduler>();
+        _task_scheduler->init();
 
         _instance = createInstance(true);
         _device = std::make_shared<Device>(_instance);
@@ -155,8 +149,6 @@ namespace vkd {
         _colour_format = _surface->colour_format();
 
         _swapchain = std::make_unique<swapchain>(_instance, _device, _surface);
-
-        _fence = create_fence(_device->logical_device(), true);
 
         _width = 1280;
         _height = 720;
@@ -207,11 +199,7 @@ namespace vkd {
         _ui = std::make_unique<MainUI>();
         _ui->set_device(_device);
 
-        callback_fences.resize(_swapchain->count());
-        for (auto&& fence : callback_fences) {
-            fence = Fence::create(_device, false);
-        }
-        sync_fence = Fence::create(_device, false);
+        sane::Service::Get().init();
     }
 
     void engine_node_init(const std::shared_ptr<EngineNode>& node, const std::string& param_hash_name) {
@@ -270,83 +258,80 @@ namespace vkd {
         end_command_buffer(buf);
     }
 
-    void submit_buffer(VkQueue queue, VkCommandBuffer buf, Fence * fence, FencePtr& callback_fence) {
+    void submit_buffer(VkQueue queue, VkCommandBuffer buf, Fence * fence) {
 		// Pipeline stage at which the queue submission will wait (via pWaitSemaphores)
 		std::vector<VkPipelineStageFlags> wait_stage_masks = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 		
         std::vector<VkSemaphore> wait_semaphores = {_present_complete};
-        
-        auto&& sems = _ui->semaphores();
+        std::vector<VkSemaphore> present_semaphores = {_render_complete};
 
-        for (auto&& sem : sems) {
-            if (sem != nullptr) {
-                if (sem->get() != VK_NULL_HANDLE) {
-                    wait_semaphores.push_back(sem->get());
-                    wait_stage_masks.push_back(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-                }
-            }
-        }
+        auto& stream = _ui->stream();
+        wait_semaphores.push_back(stream.semaphore().get());
+        wait_stage_masks.push_back(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        present_semaphores.push_back(stream.semaphore().get());
+        
+        auto timeline_value = stream.semaphore().increment();
+		std::vector<uint64_t> wait_values = {0, timeline_value - 1};
+		std::vector<uint64_t> signal_values = {0, timeline_value};
+
+		VkTimelineSemaphoreSubmitInfo timeline_info;
+		timeline_info.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+		timeline_info.pNext = NULL;
+		timeline_info.waitSemaphoreValueCount = wait_values.size();
+		timeline_info.pWaitSemaphoreValues = wait_values.data();
+		timeline_info.signalSemaphoreValueCount = signal_values.size();
+		timeline_info.pSignalSemaphoreValues = signal_values.data();
 
 		VkSubmitInfo submit_info = {};
+		submit_info.pNext = &timeline_info;
 		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submit_info.pWaitDstStageMask = wait_stage_masks.data();               // Pointer to the list of pipeline stages that the semaphore waits will occur at
 		submit_info.pWaitSemaphores = wait_semaphores.data();      // Semaphore(s) to wait upon before the submitted command buffer starts executing
 		submit_info.waitSemaphoreCount = wait_semaphores.size();                           // One wait semaphore
-		submit_info.pSignalSemaphores = &_render_complete;     // Semaphore(s) to be signaled when command buffers have completed
-		submit_info.signalSemaphoreCount = 1;                         // One signal semaphore
+		submit_info.pSignalSemaphores = present_semaphores.data();     // Semaphore(s) to be signaled when command buffers have completed
+		submit_info.signalSemaphoreCount = present_semaphores.size();                         // One signal semaphore
 		submit_info.pCommandBuffers = &buf; // Command buffers(s) to execute in this batch (submission)
 		submit_info.commandBufferCount = 1;                           // One command buffer
 
 		// Submit to the graphics queue passing a wait fence
         {
             if (fence) { fence->pre_submit(); }
-            std::lock_guard<std::mutex> lock(_device->queue_mutex());
+            std::scoped_lock lock(_device->queue_mutex());
             double wait_time = 0.5;
             VkResult res = VK_SUCCESS;
             for (int i = 0; i < 20; ++i) {
                 res = vkQueueSubmit(queue, 1, &submit_info, fence ? fence->get() : nullptr);
-		        if (fence) { fence->mark_submit(); }
                 VK_CHECK_RESULT_TIMEOUT(res);
                 if (res == VK_SUCCESS) {
+                    if (fence) { fence->mark_submit(); }
                     break;
                 }
-                std::cout << "Slow: Timeout waiting on Queue Submit (" << wait_time * (i + 1) << ")." << std::endl;
+                console << "Slow: Timeout waiting on Queue Submit (" << wait_time * (i + 1) << ")." << std::endl;
             }
             if (res == VK_TIMEOUT) {
-                std::cout << "Slow: Queue wait failed after 10s, issues likely inbound." << std::endl;
+                console << "Slow: Queue wait failed after 10s, issues likely inbound." << std::endl;
             }
         }
-        
-        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, callback_fence.get());
     }
 
     namespace {
-        std::unique_ptr<enki::TaskSet> _callback_task = nullptr;
+        enki::TaskSet * _callback_task = nullptr;
     }
 
-    void render_callback(uint32_t current_buffer) {
+    void render_callback(uint32_t current_buffer, Stream& stream) {
 
         if (_callback_task) {
-            _task_scheduler->WaitforTask(_callback_task.get());
+            _task_scheduler->wait(_callback_task);
         }
-        _callback_task = std::make_unique<enki::TaskSet>(1, [current_buffer]( enki::TaskSetPartition range, uint32_t threadnum) {
+        auto task = std::make_unique<enki::TaskSet>(1, [current_buffer, &stream](enki::TaskSetPartition range, uint32_t threadnum) {
             try {
-                callback_fences[current_buffer]->wait();
-                callback_fences[current_buffer]->reset();
+                stream.flush();
                 _draw_ui->flush();
             } catch (...) {
 
             }
         });
-
-        _task_scheduler->AddTaskSetToPipe(_callback_task.get());
-        //
-    }
-    
-	void synchronise_to_host_thread() {
-        submit_compute_buffer(*_device, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, sync_fence.get());
-        sync_fence->wait();
-        sync_fence->reset();
+        _callback_task = _task_scheduler->add(std::move(task));
     }
 
 	void draw() {
@@ -365,15 +350,16 @@ namespace vkd {
 
         _ui->execute();
         
-        submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer].get(), callback_fences[current_buffer]);
+        submit_buffer(_device->queue(), _command_buffers[current_buffer], _command_buffer_complete[current_buffer].get());
         
-        render_callback(current_buffer);
+        render_callback(current_buffer, _ui->stream());
 
 		// Present the current buffer to the swap chain
 		// Pass the semaphore signaled by the command buffer submission from the submit info as the wait semaphore for swap chain presentation
 		// This ensures that the image is not presented to the windowing system until all commands have been submitted
 		_swapchain->present(_render_complete, current_buffer);
 
+        _task_scheduler->cleanup();
 	}
 
     void ui(bool& quit) {

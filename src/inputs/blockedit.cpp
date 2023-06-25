@@ -1,4 +1,5 @@
 #include "blockedit.hpp"
+#include "make_param.hpp"
 
 namespace vkd {
 

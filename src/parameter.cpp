@@ -13,7 +13,7 @@ CEREAL_CLASS_VERSION(vkd::ParameterInterface, 2);
 #define PARAM_MACRO(NAME, VERSION) CEREAL_REGISTER_TYPE(NAME) \
 CEREAL_CLASS_VERSION(NAME, VERSION)
 
-#define PARAMETER_VERSION 1
+#define PARAMETER_VERSION 2
 PARAM_MACRO(vkd::Parameter<float>, PARAMETER_VERSION);
 PARAM_MACRO(vkd::Parameter<int>, PARAMETER_VERSION);
 PARAM_MACRO(vkd::Parameter<unsigned int>, PARAMETER_VERSION);
@@ -38,25 +38,25 @@ namespace vkd {
     }
 
     void ParameterCache::add(ParameterType p, const std::string& name, const std::shared_ptr<ParameterInterface>& param) {
-        std::lock_guard<std::mutex> lock(_param_mutex);
+        std::scoped_lock lock(_param_mutex);
         _make();
         _singleton->_add(make_hash(p, name), param);
     }
 
     bool ParameterCache::has(ParameterType p, const std::string& name) {
-        std::lock_guard<std::mutex> lock(_param_mutex);
+        std::scoped_lock lock(_param_mutex);
         _make();
         return _singleton->_has(make_hash(p, name));
     }
 
     std::shared_ptr<ParameterInterface> ParameterCache::get(ParameterType p, const std::string& name) {
-        std::lock_guard<std::mutex> lock(_param_mutex);
+        std::scoped_lock lock(_param_mutex);
         _make();
         return _singleton->_get(make_hash(p, name));
     }
 
     bool ParameterCache::remove(ParameterType p, const std::string& name) {
-        std::lock_guard<std::mutex> lock(_param_mutex);
+        std::scoped_lock lock(_param_mutex);
         _make();
         return _singleton->_remove(make_hash(p, name));
     }

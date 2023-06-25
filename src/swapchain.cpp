@@ -28,8 +28,15 @@ namespace vkd {
             || !ext_vkQueuePresentKHR) {
             throw std::runtime_error("Failed to acquire swapchain function pointer.");
         }
+    }
 
-
+    swapchain::~swapchain() {
+        for (auto&& image : _images) {
+            vkDestroyImageView(_device->logical_device(), image->view(), nullptr);
+        }
+        if (_swapchain != VK_NULL_HANDLE) {
+            ext_vkDestroySwapchainKHR(_device->logical_device(), _swapchain, nullptr);
+        }
     }
 
     uint32_t swapchain::next_image(VkSemaphore present_complete) const {

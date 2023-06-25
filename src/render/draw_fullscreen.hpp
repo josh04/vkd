@@ -2,12 +2,16 @@
         
 #include <memory>
 #include <vector>
+#include <array>
 #include <glm/glm.hpp>
 #include "vulkan.hpp"
 
+#include "sampler.hpp"
 #include "engine_node.hpp"
 #include "compute/image_node.hpp"
+#include "command_buffer.hpp"
 
+#include "ocio/ocio_functional.hpp"
 
 namespace vkd {
     
@@ -49,11 +53,17 @@ namespace vkd {
         }
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<DrawFullscreen>(); }
 
+        void pre_init();
         void init() override;
-        void post_init() override;
-        bool update(ExecutionType type) override { return false; }
+        
+        bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override;
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
+
+        void allocate(VkCommandBuffer buf) override;
+        void deallocate() override;
+
+        auto get_image() const { return _image; }
 
         auto input_node() const { return _image_node; }
 
@@ -72,15 +82,28 @@ namespace vkd {
         std::shared_ptr<IndexBuffer> _index_buffer = nullptr;
 
         std::shared_ptr<DescriptorLayout> _desc_set_layout = nullptr;
-        std::shared_ptr<DescriptorSet> _desc_set = nullptr;
+        int _desc_set_to_use = 0;
+        std::array<std::shared_ptr<DescriptorSet>, 3> _desc_sets;
+        std::shared_ptr<DescriptorSet> _desc_set;
 
         std::shared_ptr<GraphicsPipeline> _pipeline = nullptr;
         
-        VkSampler _sampler;
+        std::shared_ptr<Kernel> _ocio_kernel = nullptr;
+        std::map<int, std::shared_ptr<Image>> _ocio_images;
+
+        std::shared_ptr<Image> _input_image = nullptr;
+        std::shared_ptr<Image> _image = nullptr;
+
+        CommandBufferPtr _command_buffer = nullptr;
+        //ScopedSamplerPtr _sampler = nullptr;
+
+        int32_t _current_working_space_index = -1;
+        int32_t _current_display_space_index = -1;
 
         
         glm::ivec4 _offset_w_h;
 
+        OcioParamsPtr _ocio_params = nullptr;
     };
 
 }

@@ -13,16 +13,16 @@ namespace vkd {
     REGISTER_NODE("gaussian", "blur", Gaussian);
 
     void Gaussian::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
         _horiz = std::make_shared<Kernel>(_device, param_hash_name());
-        _horiz->init("shaders/compute/gaussian_horiz.comp.spv", "main", {16, 16, 1});
+        _horiz->init("shaders/compute/gaussian_horiz.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_horiz);
 
         _vert = std::make_shared<Kernel>(_device, param_hash_name());
-        _vert->init("shaders/compute/gaussian_vert.comp.spv", "main", {16, 16, 1});
+        _vert->init("shaders/compute/gaussian_vert.comp.spv", "main", Kernel::default_local_sizes);
         register_params(*_vert);
 
         auto sigmaS = _horiz->get_param_by_name("sigma");
@@ -43,7 +43,6 @@ namespace vkd {
         half_window->as<int>().min(1);
         half_window->as<int>().max(200);
 
-        _compute_complete = Semaphore::make(_device);
 
         auto image = _image_node->get_output_image();
         _size = image->dim();
@@ -69,10 +68,6 @@ namespace vkd {
         _vert->set_arg(1, _image);
     }
 
-    void Gaussian::post_init()
-    {
-    }
-
     bool Gaussian::update(ExecutionType type) {
 
         bool update = false;
@@ -85,16 +80,16 @@ namespace vkd {
         }
 
         if (update) {
-            begin_command_buffer(_compute_command_buffer);
-            _horiz->dispatch(_compute_command_buffer, _size.x, _size.y);
-            _vert->dispatch(_compute_command_buffer, _size.x, _size.y);
-            end_command_buffer(_compute_command_buffer);
+            command_buffer().begin();
+            _horiz->dispatch(command_buffer(), _size.x, _size.y);
+            _vert->dispatch(command_buffer(), _size.x, _size.y);
+            command_buffer().end();
         }
 
         return update;
     }
 
-    void Gaussian::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Gaussian::execute(ExecutionType type, Stream& stream) {
+        stream.submit(command_buffer());
     }
 }

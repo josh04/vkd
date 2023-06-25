@@ -40,10 +40,9 @@ namespace vkd {
         void init() {}
         void ui() {}
 
-        const SemaphorePtr& wait_prerender() const { return VK_NULL_HANDLE; }
         bool update(ExecutionType type) { return false; }
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {}
+        void execute(ExecutionType type, Stream& stream) {}
 
         std::shared_ptr<EngineNode> real_node() const { return _real_node; }
         void real_node(std::shared_ptr<EngineNode> node);

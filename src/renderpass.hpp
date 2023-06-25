@@ -9,7 +9,7 @@ namespace vkd {
     class Renderpass {
     public:
         Renderpass(std::shared_ptr<Device> device) : _device(device) {}
-        ~Renderpass() = default;
+        ~Renderpass();
         Renderpass(Renderpass&&) = delete;
         Renderpass(const Renderpass&) = delete;
 

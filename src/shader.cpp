@@ -185,7 +185,7 @@ namespace vkd {
 					}
 				}
 
-				//std::cout << _path << " constant size: " << constant.size << " offset: " << constant.offset << " stage: " << constant.stageFlags << std::endl; 	
+				//console << _path << " constant size: " << constant.size << " offset: " << constant.offset << " stage: " << constant.stageFlags << std::endl; 	
 			}
 		}
 
@@ -391,13 +391,13 @@ namespace vkd {
 /*
 		std::string output;
 		if (!tshader->preprocess(&DefaultTBuiltInResource, defaultVersion, ENoProfile, false, false, messages, &output, includer)) {
-			std::cerr << tshader->getInfoDebugLog() << std::endl;
+			console << tshader->getInfoDebugLog() << std::endl;
             throw std::runtime_error("Shader failed to preprocess.");
 		}
-		std::cout << output << std::endl;
+		console << output << std::endl;
 */
         if (!tshader->parse(&DefaultTBuiltInResource, defaultVersion, false, messages, includer)) {
-			std::cerr << tshader->getInfoDebugLog() << std::endl;
+			console << tshader->getInfoDebugLog() << std::endl;
             throw std::runtime_error("Shader failed to parse."); // FIXME make not a runtime error, provide feedback
 		}
 

@@ -18,6 +18,7 @@ namespace vkd {
 
         void kernel_init() override;
         void kernel_params() override;
+        void kernel_update() override {}
         
     private:
         std::shared_ptr<ParameterInterface> _sat_param = nullptr;

@@ -34,12 +34,11 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<ExrOutput>(); }
         
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
-        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
     private:
         std::string _filename() const;
 
@@ -55,7 +54,6 @@ namespace vkd {
 
         FencePtr _fence = nullptr;
 
-        VkCommandBuffer _compute_command_buffer;
-        SemaphorePtr _compute_complete;
+        
     };
 }

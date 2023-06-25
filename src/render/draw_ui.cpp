@@ -58,6 +58,8 @@ namespace vkd {
     DrawUI::~DrawUI() {
         ImGui_ImplVulkan_DestroyFontUploadObjects();
         ImGui_ImplVulkan_Shutdown();
+
+        vkDestroyDescriptorPool(_device->logical_device(), imgui_init.DescriptorPool, nullptr);
     }
 /*
 // Initialization data, for ImGui_ImplVulkan_Init()
@@ -148,7 +150,7 @@ struct ImGui_ImplVulkan_InitInfo
         _desc_set_layout->create();
 
         _desc_set = std::make_shared<vkd::DescriptorSet>(_device, _desc_set_layout, _desc_pool);
-        _desc_set->add_image(*_font_images[0], _sampler);
+        _desc_set->add_image(_font_images[0], _sampler);
         _desc_set->create();
 
         auto pl = std::make_shared<ImGuiPipelineLayout>(_device);
@@ -168,9 +170,6 @@ struct ImGui_ImplVulkan_InitInfo
 
         _pipeline->create(pl, std::move(shader_stages), std::move(vertex_input));
         */
-    }
-
-    void DrawUI::post_init() {
     }
 
     bool DrawUI::update(ExecutionType type) {
@@ -268,7 +267,7 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
 
         ImGuiIO& io = ImGui::GetIO();
 
-        _pipeline->bind(buf, _desc_set->get());
+        _pipeline->bind(buf, _desc_set);
 
         _const_block.scale = glm::vec2(2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y);
         _const_block.translate = glm::vec2(-1.0f);
@@ -302,7 +301,7 @@ IMGUI_IMPL_API void     ImGui_ImplVulkan_SetMinImageCount(uint32_t min_image_cou
         */
     }
 
-    void DrawUI::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
+    void DrawUI::execute(ExecutionType type, Stream& stream) {
 
     }
 

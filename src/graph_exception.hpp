@@ -15,7 +15,27 @@ namespace vkd {
     public:
         using std::runtime_error::runtime_error;
     };
+    class RebakeException : public std::runtime_error {
+    public:
+        using std::runtime_error::runtime_error;
+    };
+    class ServiceException : public std::runtime_error {
+    public:
+        using std::runtime_error::runtime_error;
+    };
+    class ImageException : public std::runtime_error {
+    public:
+        using std::runtime_error::runtime_error;
+    };
+    class PendingException : public UpdateException {
+    public:
+        using vkd::UpdateException::UpdateException;
+    };
 	class OcioException : public std::runtime_error {
+    public:
+        using std::runtime_error::runtime_error;
+	};
+	class ExecutionException : public std::runtime_error {
     public:
         using std::runtime_error::runtime_error;
 	};

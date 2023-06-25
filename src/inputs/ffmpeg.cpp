@@ -6,9 +6,13 @@
 #include "compute/kernel.hpp"
 #include "imgui/imgui.h"
 
+#include "ocio/ocio_functional.hpp"
+
 extern "C" {
 #include <libavformat/avformat.h>
 }
+
+#include "ffmpeg_init.hpp"
 
 namespace vkd {
     REGISTER_NODE("ffmpeg", "ffmpeg", Ffmpeg);
@@ -36,28 +40,13 @@ namespace vkd {
     }
 
     void Ffmpeg::init() {
-        static std::once_flag initFlag;
-        std::call_once(initFlag, []() {
-            av_register_all();
-            avformat_network_init();
-            av_log_set_callback([](void * ptr, int level, const char* szFmt, va_list varg)
-                { 
-                    if (level < av_log_get_level()) { 
-                        int pre = 1; 
-                        char line[1024]; 
-                        av_log_format_line(ptr, level, szFmt, varg, line, 1024, &pre); 
-                        std::cout << (std::string(line)) << std::endl;; 
-                    }
-                }
-            );
-        });
+        ffmpeg_static_init();
 
         if (_path_param->as<std::string>().get().size() < 3) {
             throw GraphException("No path provided to ffmpeg node.");
         } 
 
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
-        _compute_complete = Semaphore::make(_device);
+        
 
         _format_context = avformat_alloc_context();
         
@@ -104,6 +93,11 @@ namespace vkd {
         _height = _video_stream->codecpar->height;
         
         _frame_count = _video_stream->nb_frames + 1 - ((_video_stream->nb_frames + 1) % 2);
+
+        if (_frame_count == 0) {
+            _frame_count = (_format_context->duration * _video_stream->avg_frame_rate.num / _video_stream->avg_frame_rate.den) / 1000000;
+        }
+
         _block.total_frame_count->as<int>().set_force(_frame_count > 0 ? _frame_count : 100);
         
 
@@ -113,19 +107,14 @@ namespace vkd {
             register_params(*kern);
         }
 
-        begin_command_buffer(_compute_command_buffer);
-        _uploader->commands(_compute_command_buffer);
-        end_command_buffer(_compute_command_buffer);
-
         //_local_timeline->frame_count = _frame_count;
 
         //_local_timeline->name = _path_param->as<std::string>().get().c_str();
 
         _current_frame = 0;
-    }
 
-    void Ffmpeg::post_init()
-    {
+        _ocio = std::make_unique<OcioNode>(OcioNode::Type::In);
+        _ocio->init(*this);
     }
 
     bool Ffmpeg::update(ExecutionType type) {
@@ -162,36 +151,54 @@ namespace vkd {
             while (!got_frame) {
                 int ret = avcodec_receive_frame(_codec_context, avFrame.get());
                 if (ret == AVERROR(EAGAIN)) {
-                    if (av_read_frame(_format_context, packet.get()) < 0) {
-                        _eof = true;
-                        break;
-                        //throw GraphException("ran out of packets");
+                    if (_eof) { // we're at the end of the stream
+                        int retc = avcodec_send_packet(_codec_context, nullptr);
+                        if (retc == AVERROR(EAGAIN)) {
+                            continue;
+                        } else if (retc == AVERROR_EOF) {
+                            continue;
+                        } else if (retc < 0) {
+                            throw UpdateException("send packet failed");
+                        }
+                    } else { // else get a packet
+                        if (av_read_frame(_format_context, packet.get()) < 0) {
+                            _eof = true;
+                            continue;
+                            //throw GraphException("ran out of packets");
+                        }
                     }
                     if (packet->stream_index == _video_stream->index) {
-                        avcodec_send_packet(_codec_context, packet.get());
+                        int retc = avcodec_send_packet(_codec_context, packet.get());
+                        if (retc == AVERROR(EAGAIN)) {
+                            continue;
+                        } else if (retc == AVERROR_EOF) {
+                            return false;
+                        } else if (retc < 0) {
+                            throw UpdateException("send packet failed");
+                        }
                     }
                 } else if (ret == AVERROR_EOF) {
                     return false;
                 } else if (ret == AVERROR(EINVAL)) {
-                    throw GraphException("decode failed");
+                    throw GraphException("receive frame failed");
                 } else if (avFrame->pkt_pts < _target_pts) {
-                    //std::cout << "target pts: " << _target_pts << "pts: " << packet->pts << " dts: " << packet->pts << std::endl;
-                    //std::cout << "skippe frame: " << avFrame->pkt_pts << std::endl;
+                    //console << "target pts: " << _target_pts << "pts: " << packet->pts << " dts: " << packet->pts << std::endl;
+                    //console << "skippe frame: " << avFrame->pkt_pts << std::endl;
                     continue;
                 } else if (ret == 0) {
                     got_frame = true;
                 }
             }
 
-            //std::cout << "pts: " << packet->pts << " dts: " << packet->pts << std::endl;
-            //std::cout << "coded frame number: " << avFrame->coded_picture_number << std::endl;
+            //console << "pts: " << packet->pts << " dts: " << packet->pts << std::endl;
+            //console << "coded frame number: " << avFrame->coded_picture_number << std::endl;
 
             // do something with frame
 
-            //std::cout << "got frame:" << _video_stream->codecpar->format << std::endl;
-            //std::cout << "avframe:" << _codec_context->pix_fmt << std::endl;
+            //console << "got frame:" << _video_stream->codecpar->format << std::endl;
+            //console << "avframe:" << _codec_context->pix_fmt << std::endl;
 
-            if (!_eof) {
+            if (got_frame) {
                 for (int j = 0; j < _height; ++j) {
                     memcpy((uint8_t*)_uploader->get_main() + j * _width, avFrame->data[0] + j * avFrame->linesize[0], _width);
                     if (j < _height / 2) {
@@ -208,7 +215,7 @@ namespace vkd {
         //_decode_next_frame = _timeline->play();
         _target_pts = 0;
 
-        /*
+        
         bool update = false;
         for (auto&& pmap : _params) {
             for (auto&& el : pmap.second) {
@@ -217,14 +224,30 @@ namespace vkd {
                 }
             }
         }
-        */
 
-        return updated;
+        if (update) {
+            _ocio->update(*this, _uploader->get_gpu());
+        }
+        
+
+        return updated || update;
     }
 
-    void Ffmpeg::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        _last_fence = fence;
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Ffmpeg::allocate(VkCommandBuffer buf) {
+        _uploader->allocate(buf);
+    }
+
+    void Ffmpeg::deallocate() { 
+        _uploader->deallocate();
+    }
+
+    void Ffmpeg::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _uploader->commands(command_buffer());
+        _ocio->execute(command_buffer(), _width, _height);
+        command_buffer().end();
+
+        stream.submit(command_buffer());
     }
 
     void Ffmpeg::scrub(const Frame& frame) {
@@ -244,13 +267,14 @@ namespace vkd {
         } else {
             
             int64_t pos = 0;
-            if (_video_stream->time_base.num) {
-                pos = i * _video_stream->r_frame_rate.den;
+            if (_video_stream->avg_frame_rate.num) {
+                //pos = av_rescale_q(i * _video_stream->time_base.den / _video_stream->time_base.num, AVRational{1, AV_TIME_BASE}, _video_stream->time_base);
+                pos = i * (_video_stream->time_base.den * _video_stream->avg_frame_rate.den) / (_video_stream->time_base.num * _video_stream->avg_frame_rate.num);
             } else {
                 pos = i * AV_TIME_BASE;
             }
 
-            //std::cout << "seek pos: " << pos << std::endl;
+            //console << "seek pos: " << pos << std::endl;
 
             if (pos < 0) {
                 throw GraphException("uh oh");

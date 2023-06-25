@@ -22,6 +22,7 @@ namespace vkd {
     struct Frame;
     class ImageDownloader;
     class ImageNode;
+    class OcioNode;
 
     class FfmpegOutput : public EngineNode {
     public:
@@ -55,18 +56,21 @@ namespace vkd {
         std::shared_ptr<EngineNode> clone() const override { return std::make_shared<FfmpegOutput>(); }
         
         void init() override;
-        void post_init() override;
+        
         bool update(ExecutionType type) override;
         void commands(VkCommandBuffer buf, uint32_t width, uint32_t height) override {}
-        void execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) override;
+        void execute(ExecutionType type, Stream& stream) override;
 
         void finish() override;
 
-        const SemaphorePtr& wait_prerender() const override { return _compute_complete; }
+        
+        void allocate(VkCommandBuffer buf) override;
+        void deallocate() override;
+
     private:
         int32_t _width = 1, _height = 1;
 
-        int32_t _fps = 60;
+        int32_t _fps = 25;
 
         uint32_t _frame_count = 0;
 
@@ -83,7 +87,6 @@ namespace vkd {
 
         FencePtr _fence = nullptr;
 
-        VkCommandBuffer _compute_command_buffer;
-        SemaphorePtr _compute_complete;
+        std::unique_ptr<OcioNode> _ocio = nullptr;
     };
 }

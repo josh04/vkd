@@ -13,13 +13,12 @@ namespace vkd {
     REGISTER_NODE("constant", "constant", Constant);
 
     void Constant::init() {
-        _compute_command_buffer = create_command_buffer(_device->logical_device(), _device->command_pool());
+        
 
         _size = {0, 0};
         
-        _constant = Kernel::make(*this, "shaders/compute/constant.comp.spv", "main", {16, 16, 1});
+        _constant = Kernel::make(*this, "shaders/compute/constant.comp.spv", "main", Kernel::default_local_sizes);
         
-        _compute_complete = Semaphore::make(_device);
         
         _size_param = make_param<glm::ivec2>(*this, "size", 0);
         _size_param->as<glm::ivec2>().set_default({1920, 1080});
@@ -38,9 +37,6 @@ namespace vkd {
 
     void Constant::deallocate() { 
         _image->deallocate();
-    }
-
-    void Constant::post_init() {
     }
 
     bool Constant::update(ExecutionType type) {
@@ -65,10 +61,10 @@ namespace vkd {
         return update;
     }
 
-    void Constant::execute(ExecutionType type, const SemaphorePtr& wait_semaphore, Fence * fence) {
-        begin_command_buffer(_compute_command_buffer);
-        _constant->dispatch(_compute_command_buffer, _size.x, _size.y);
-        end_command_buffer(_compute_command_buffer);
-        submit_compute_buffer(*_device, _compute_command_buffer, wait_semaphore, _compute_complete, fence);
+    void Constant::execute(ExecutionType type, Stream& stream) {
+        command_buffer().begin();
+        _constant->dispatch(command_buffer(), _size.x, _size.y);
+        command_buffer().end();
+        stream.submit(command_buffer());
     }
 }

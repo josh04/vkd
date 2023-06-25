@@ -9,7 +9,7 @@ namespace vkd {
     class Framebuffer {
     public:
         Framebuffer(std::shared_ptr<Device> device, std::shared_ptr<Renderpass> renderpass) : _device(device), _renderpass(renderpass) {}
-        ~Framebuffer() = default;
+        ~Framebuffer();
         Framebuffer(Framebuffer&&) = delete;
         Framebuffer(const Framebuffer&) = delete;
 
@@ -18,6 +18,6 @@ namespace vkd {
     private:
         std::shared_ptr<Device> _device;
         std::shared_ptr<Renderpass> _renderpass;
-        VkFramebuffer _framebuffer;
+        VkFramebuffer _framebuffer = VK_NULL_HANDLE;
     };
 }

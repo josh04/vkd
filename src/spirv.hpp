@@ -51,7 +51,7 @@ namespace vkd {
 			// Create a new shader module that will be used for pipeline creation
 			return load_spirv_shader(device, filename, shader_code, reflection_module);
 		} else {
-			std::cerr << "Error: Could not open shader file \"" << filename << "\"" << std::endl;
+			console << "Error: Could not open shader file \"" << filename << "\"" << std::endl;
 			return VK_NULL_HANDLE;
 		}
 	}
