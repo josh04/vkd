@@ -43,3 +43,5 @@
 [submodule "external/libjpeg-turbo"]
 	path = external/libjpeg-turbo
 	url = https://github.com/libjpeg-turbo/libjpeg-turbo
+[submodule "external/libjpeg-turbo/"]
+	url = git@github.com:josh04/libjpeg-turbo.git
